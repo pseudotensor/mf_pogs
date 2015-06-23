@@ -7,6 +7,7 @@
 
 #include "matrix/matrix_dense.h"
 #include "matrix/matrix_sparse.h"
+#include "matrix/matrix_fao.h"
 #include "projector/projector_cgls.h"
 #include "projector/projector_direct.h"
 #include "prox_lib.h"

@@ -68,41 +68,45 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
   DEBUG_ASSERT(this->_done_init);
   if (!this->_done_init)
     return 1;
-
+  gsl::vector<T> *dag_input =
+    const_cast< gsl::vector<T> *>(&this->_dag_input);
+  gsl::vector<T> *dag_output =
+    const_cast< gsl::vector<T> *>(&this->_dag_output);
   gsl::vector<T> x_vec, y_vec;
+  // TODO factor out common code.
   if (trans == 'n' || trans == 'N') {
     // x_vec = gsl::vector_view_array<T>(x, this->_n);
     y_vec = gsl::vector_view_array<T>(y, this->_m);
-    gsl::vector_memcpy<T>(&this->_dag_input, x);
-    gsl::vector_scale<T>(&this->_dag_input, alpha);
+    gsl::vector_memcpy<T>(dag_input, x);
+    gsl::vector_scale<T>(dag_input, alpha);
     // Multiply by D.
     if (this->_done_equil) {
-      gsl::vector_mul<T>(&this->_dag_input, &this->_d);
+      gsl::vector_mul<T>(dag_input, &this->_d);
     }
     this->_Amul(this->_dag);
     // Multiply by E.
     if (this->_done_equil) {
-      gsl::vector_mul<T>(&this->_dag_output, &this->_e);
+      gsl::vector_mul<T>(dag_output, &this->_e);
     }
     gsl::vector_scale(&y_vec, beta);
-    gsl::vector_add<T>(&y_vec, &this->_dag_output);
+    gsl::vector_add<T>(&y_vec, dag_output);
   } else {
     // x_vec = gsl::vector_view_array<T>(x, this->_m);
     y_vec = gsl::vector_view_array<T>(y, this->_n);
-    gsl::vector_memcpy<T>(&this->_dag_output, x);
-    gsl::vector_scale<T>(&this->_dag_output, alpha);
+    gsl::vector_memcpy<T>(dag_output, x);
+    gsl::vector_scale<T>(dag_output, alpha);
     // Multiply by E.
     if (this->_done_equil) {
-      gsl::vector_mul<T>(&this->_dag_output, this->_e);
+      gsl::vector_mul<T>(dag_output, &this->_e);
     }
-    gsl::vector_memcpy<T>(&this->_dag_output, &x_vec);
+    gsl::vector_memcpy<T>(dag_output, &x_vec);
     this->_ATmul(this->_dag);
     // Multiply by D.
     if (this->_done_equil) {
-      gsl::vector_mul<T>(&this->_dag_input, &this->_d);
+      gsl::vector_mul<T>(dag_input, &this->_d);
     }
     gsl::vector_scale<T>(&y_vec, beta);
-    gsl::vector_add<T>(&y_vec, &this->_dag_input);
+    gsl::vector_add<T>(&y_vec, dag_input);
   }
 
   return 0;
@@ -137,7 +141,9 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   // Save D and E.
   this->_done_equil = 1;
   this->_d = gsl::vector_view_array<T>(d, this->_m);
+  gsl::vector_set_all<T>(&this->_d, 1);
   this->_e = gsl::vector_view_array<T>(e, this->_m);
+  gsl::vector_set_all<T>(&this->_e, 1);
 
   DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
       gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));
