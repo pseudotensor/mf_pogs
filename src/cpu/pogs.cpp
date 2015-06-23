@@ -193,7 +193,13 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
 
     // Evaluate Proximal Operators
     gsl::blas_axpy(-kOne, &zt, &z);
+    // printf("before prox norm2(x) = %e\n", gsl::blas_nrm2(&x));
+    // printf("before prox norm2(y) = %e\n", gsl::blas_nrm2(&y));
     obj->prox(x.data, y.data, x12.data, y12.data, _rho);
+    // printf("after prox norm2(x) = %e\n", gsl::blas_nrm2(&x));
+    // printf("after prox norm2(y) = %e\n", gsl::blas_nrm2(&y));
+    // printf("after prox norm2(x12) = %e\n", gsl::blas_nrm2(&x12));
+    // printf("after prox norm2(y12) = %e\n", gsl::blas_nrm2(&y12));
     // Compute gap, optval, and tolerances.
     gsl::blas_axpy(-kOne, &z12, &z);
     gsl::blas_dot(&z, &z12, &gap);
@@ -211,7 +217,11 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
     // Project onto y = Ax.
     T proj_tol = kProjTolMin / std::pow(static_cast<T>(k + 1), kProjTolPow);
     proj_tol = std::max(proj_tol, kProjTolMax);
+    printf("before project norm2(x) = %e\n", gsl::blas_nrm2(&x));
+    printf("before project norm2(y) = %e\n", gsl::blas_nrm2(&y));
     _P.Project(xtemp.data, ytemp.data, kOne, x.data, y.data, proj_tol);
+    printf("after project norm2(x) = %e\n", gsl::blas_nrm2(&x));
+    printf("after project norm2(y) = %e\n", gsl::blas_nrm2(&y));
     // Calculate residuals.
     gsl::vector_memcpy(&ztemp, &zprev);
     gsl::blas_axpy(-kOne, &z, &ztemp);

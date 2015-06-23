@@ -1,7 +1,7 @@
 #ifndef MATRIX_MATRIX_FAO_H_
 #define MATRIX_MATRIX_FAO_H_
 
-#include <functional>
+#include <random>
 
 #include "gsl/gsl_vector.h"
 
@@ -20,11 +20,17 @@ class MatrixFAO : public Matrix<T> {
   gsl::vector<T> _d;
   gsl::vector<T> _e;
   bool _done_equil;
+  const size_t _samples, _equil_steps;
+
+  void GenRandS(gsl::vector<T> *s) const;
+  void RandRnsAE(gsl::vector<T> *output) const;
+  void RandRnsATD(gsl::vector<T> *output) const;
+
  public:
   // Constructor (only sets variables)
   MatrixFAO(T *dag_output, size_t m, T *dag_input, size_t n,
             void (*Amul)(void *), void (*ATmul)(void *),
-            void *dag);
+            void *dag, size_t samples, size_t equil_steps);
   ~MatrixFAO();
 
   // Initialize matrix, call this before any other methods.

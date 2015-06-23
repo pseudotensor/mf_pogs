@@ -4,6 +4,8 @@
 #include "equil_helper.h"
 #include "matrix/matrix.h"
 #include "matrix/matrix_fao.h"
+#include <random>
+#include <cstdlib>
 
 namespace pogs {
 
@@ -30,6 +32,9 @@ CBLAS_TRANSPOSE_t OpToCblasOp(char trans) {
 }
 
 template <typename T>
+void AddOrCopy(gsl::vector<T> *y, const gsl::vector<T> *x, bool clear);
+
+template <typename T>
 T NormEst(NormTypes norm_type, const MatrixFAO<T>& A);
 
 }  // namespace
@@ -40,16 +45,22 @@ T NormEst(NormTypes norm_type, const MatrixFAO<T>& A);
 template <typename T>
 MatrixFAO<T>::MatrixFAO(T *dag_output, size_t m, T *dag_input, size_t n,
                         void (*Amul)(void *), void (*ATmul)(void *),
-                        void *dag) :  Matrix<T>(m, n) {
+                        void *dag, size_t samples,
+                        size_t equil_steps) :  Matrix<T>(m, n),
+                        _samples(samples), _equil_steps(equil_steps) {
   this->_dag_output = gsl::vector_view_array<T>(dag_output, m);
   this->_dag_input = gsl::vector_view_array<T>(dag_input, n);
   this->_Amul = Amul;
   this->_ATmul = ATmul;
   this->_dag = dag;
   this->_done_equil = false;
+  // this->_samples = samples;
+  // this->_equil_steps = equil_steps;
   // TODO why do I need to set this here?
   this->_m = m;
   this->_n = n;
+  // TODO move this.
+  srand(1);
 }
 
 template <typename T>
@@ -121,25 +132,35 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   if (!this->_done_init)
     return 1;
 
-  // // Perform Sinkhorn-Knopp equilibration.
-  // SinkhornKnopp(this, d, e, constrain_d, constrain_e);
-
-  // Compute D := sqrt(D), E := sqrt(E), if 2-norm was equilibrated.
-  // if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-  //   std::transform(d, d + this->_m, d, SqrtF<T>());
-  //   std::transform(e, e + this->_n, e, SqrtF<T>());
-  // }
-
-  // Scale A to have norm of 1 (in the kNormNormalize norm).
-  T normA = NormEst(kNormNormalize, *this);
-
-  // Scale d and e to account for normalization of A.
   gsl::vector<T> d_vec = gsl::vector_view_array<T>(d, this->_m);
   gsl::vector<T> e_vec = gsl::vector_view_array<T>(e, this->_n);
-  // gsl::vector_scale(&d_vec, 1 / normA);
-  // gsl::vector_scale(&e_vec, 1 / normA);
-  gsl::vector_set_all<T>(&d_vec, static_cast<T>(1.));
-  gsl::vector_set_all<T>(&e_vec, static_cast<T>(1.));
+  // Perform randomized Sinkhorn-Knopp equilibration.
+  // alpha = n, beta = m, gamma = 0.
+  T alpha = static_cast<T>(this->_n);
+  T beta = static_cast<T>(this->_m);
+  gsl::vector<T> rnsATD = gsl::vector_alloc<T>(this->_n);
+  for (size_t i=0; i < this->_equil_steps; ++i) {
+    // Set D = alpha*(|A|^2diag(E)^2 + alpha^2*gamma*1)^{-1/2}.
+    RandRnsAE(&d_vec);
+    gsl::vector_add_constant<T>(&d_vec, alpha*alpha);
+    std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, SqrtF<T>());
+    std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, ReciprF<T>());
+    // Set E = beta*(|A^T|^2diag(D)^2 + gamma*beta^2*1)^{-1/2}.
+    RandRnsATD(&e_vec);
+    // Save the row norms squared of A^TD.
+    gsl::vector_memcpy<T>(&rnsATD, &e_vec);
+    gsl::vector_add_constant<T>(&e_vec, beta*beta);
+    std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, SqrtF<T>());
+    std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, ReciprF<T>());
+  }
+
+  // Scale A to have Frobenius norm of 1.
+  gsl::vector_mul<T>(&rnsATD, &e_vec);
+  T normA;
+  gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
+  // Scale d and e to account for normalization of A.
+  gsl::vector_scale(&d_vec, 1 / normA);
+  gsl::vector_scale(&e_vec, 1 / normA);
   // Save D and E.
   this->_done_equil = true;
   this->_d = d_vec;
@@ -151,28 +172,82 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   return 0;
 }
 
+
+// Populates s with random +1, -1 entries.
+template <typename T>
+void MatrixFAO<T>::GenRandS(gsl::vector<T> *s) const {
+  for (size_t i = 0; i < s->size; ++i) {
+    int draw = 2*(rand() % 2) - 1;
+    gsl::vector_set<T>(s, i, static_cast<T>(draw));
+    printf("s[%zu] = %e\n", i, s->data[i]);
+  }
+}
+
+
+// Estimate the row norm squared of AE.
+template <typename T>
+void MatrixFAO<T>::RandRnsAE(gsl::vector<T> *output) const {
+  ASSERT(this->_done_equil);
+  gsl::vector<T> *dag_input =
+    const_cast< gsl::vector<T> *>(&this->_dag_input);
+  for (size_t i = 0; i < this->_samples; ++i) {
+    GenRandS(dag_input);
+    gsl::vector_mul<T>(dag_input, &this->_d);
+    this->_Amul(this->_dag);
+    gsl::vector_mul<T>(dag_input, dag_input);
+    AddOrCopy(output, dag_input, i == 0);
+  }
+  gsl::vector_scale(output, static_cast<T>(1.)/static_cast<T>(this->_samples));
+}
+
+// Estimate the row norm squared of A^TD.
+template <typename T>
+void MatrixFAO<T>::RandRnsATD(gsl::vector<T> *output) const {
+  ASSERT(this->_done_equil);
+  gsl::vector<T> *dag_output =
+    const_cast< gsl::vector<T> *>(&this->_dag_output);
+  for (size_t i = 0; i < this->_samples; ++i) {
+    GenRandS(dag_output);
+    gsl::vector_mul<T>(dag_output, &this->_e);
+    this->_ATmul(this->_dag);
+    gsl::vector_mul<T>(dag_output, dag_output);
+    AddOrCopy(output, dag_output, i == 0);
+  }
+  gsl::vector_scale(output, static_cast<T>(1.)/static_cast<T>(this->_samples));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 /////////////////////// Equilibration Helpers //////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 namespace {
 
-// Estimates norm of A. norm_type should either be kNorm2 or kNormFro.
+// // Estimates norm of A. norm_type should either be kNorm2 or kNormFro.
+// template <typename T>
+// T NormEst(NormTypes norm_type, const MatrixFAO<T>& A) {
+//   switch (norm_type) {
+//     case kNorm2: {
+//       return 1;
+//     }
+//     case kNormFro: {
+//       return 1;
+//     }
+//     case kNorm1:
+//       // 1-norm normalization doens't make make sense since it treats rows and
+//       // columns differently.
+//     default:
+//       ASSERT(false);
+//       return static_cast<T>(0.);
+//   }
+// }
+
+// Either y += x or y = x.
 template <typename T>
-T NormEst(NormTypes norm_type, const MatrixFAO<T>& A) {
-  switch (norm_type) {
-    case kNorm2: {
-      return 1;
+void AddOrCopy(gsl::vector<T> *y, const gsl::vector<T> *x, bool clear) {
+    if (clear) {
+      gsl::vector_memcpy<T>(y, x);
+    } else {
+      gsl::vector_add<T>(y, x);
     }
-    case kNormFro: {
-      return 1;
-    }
-    case kNorm1:
-      // 1-norm normalization doens't make make sense since it treats rows and
-      // columns differently.
-    default:
-      ASSERT(false);
-      return static_cast<T>(0.);
-  }
 }
 
 }  // namespace
