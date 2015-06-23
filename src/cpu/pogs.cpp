@@ -10,6 +10,7 @@
 #include "matrix/matrix.h"
 #include "matrix/matrix_dense.h"
 #include "matrix/matrix_sparse.h"
+#include "matrix/matrix_fao.h"
 #include "projector/projector.h"
 #include "projector/projector_direct.h"
 #include "projector/projector_cgls.h"
@@ -193,7 +194,6 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
     // Evaluate Proximal Operators
     gsl::blas_axpy(-kOne, &zt, &z);
     obj->prox(x.data, y.data, x12.data, y12.data, _rho);
-
     // Compute gap, optval, and tolerances.
     gsl::blas_axpy(-kOne, &z12, &z);
     gsl::blas_dot(&z, &z12, &gap);
@@ -212,7 +212,6 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
     T proj_tol = kProjTolMin / std::pow(static_cast<T>(k + 1), kProjTolPow);
     proj_tol = std::max(proj_tol, kProjTolMax);
     _P.Project(xtemp.data, ytemp.data, kOne, x.data, y.data, proj_tol);
-
     // Calculate residuals.
     gsl::vector_memcpy(&ztemp, &zprev);
     gsl::blas_axpy(-kOne, &z, &ztemp);
@@ -536,6 +535,8 @@ template class PogsCone<double, MatrixDense<double>,
     ProjectorCgls<double, MatrixDense<double> > >;
 template class PogsCone<double, MatrixSparse<double>,
     ProjectorCgls<double, MatrixSparse<double> > >;
+template class PogsCone<double, MatrixFAO<double>,
+    ProjectorCgls<double, MatrixFAO<double> > >;
 #endif
 
 #if !defined(POGS_SINGLE) || POGS_SINGLE==1
@@ -552,6 +553,8 @@ template class PogsCone<float, MatrixDense<float>,
     ProjectorCgls<float, MatrixDense<float> > >;
 template class PogsCone<float, MatrixSparse<float>,
     ProjectorCgls<float, MatrixSparse<float> > >;
+template class PogsCone<float, MatrixFAO<float>,
+    ProjectorCgls<float, MatrixFAO<float> > >;
 #endif
 
 }  // namespace pogs

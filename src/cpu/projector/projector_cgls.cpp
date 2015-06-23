@@ -6,6 +6,7 @@
 #include "gsl/gsl_vector.h"
 #include "matrix/matrix_dense.h"
 #include "matrix/matrix_sparse.h"
+#include "matrix/matrix_fao.h"
 #include "projector/projector_cgls.h"
 #include "projector_helper.h"
 #include "util.h"
@@ -66,7 +67,7 @@ int ProjectorCgls<T, M>::Project(const T *x0, const T *y0, T s, T *x, T *y,
   // Minimize ||Ax - b||_2^2 + s||x||_2^2
   cgls::Solve(Gemv<T, M>(_A), static_cast<cgls::INT>(_A.Rows()),
       static_cast<cgls::INT>(_A.Cols()), y, x, s, tol, kMaxIter, kCglsQuiet);
- 
+
   // x := x + x0
   gsl::vector<T> x_vec = gsl::vector_view_array(x, _A.Cols());
   const gsl::vector<T> x0_vec = gsl::vector_view_array(x0, _A.Cols());
@@ -88,11 +89,13 @@ int ProjectorCgls<T, M>::Project(const T *x0, const T *y0, T s, T *x, T *y,
 #if !defined(POGS_DOUBLE) || POGS_DOUBLE==1
 template class ProjectorCgls<double, MatrixDense<double> >;
 template class ProjectorCgls<double, MatrixSparse<double> >;
+template class ProjectorCgls<double, MatrixFAO<double> >;
 #endif
 
 #if !defined(POGS_SINGLE) || POGS_SINGLE==1
 template class ProjectorCgls<float, MatrixDense<float> >;
 template class ProjectorCgls<float, MatrixSparse<float> >;
+template class ProjectorCgls<float, MatrixFAO<float> >;
 #endif
 
 }  // namespace pogs

@@ -19,8 +19,7 @@ class MatrixFAO : public Matrix<T> {
   void * _dag;
   gsl::vector<T> _d;
   gsl::vector<T> _e;
-  int _done_equil;
-  int _done_init;
+  bool _done_equil;
  public:
   // Constructor (only sets variables)
   MatrixFAO(T *dag_output, size_t m, T *dag_input, size_t n,

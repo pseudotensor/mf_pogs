@@ -60,7 +60,7 @@ MatrixSparse<T>::MatrixSparse(char ord, POGS_INT m, POGS_INT n, POGS_INT nnz,
 
 template <typename T>
 MatrixSparse<T>::MatrixSparse(const MatrixSparse<T>& A)
-    : Matrix<T>(A._m, A._n), _data(0), _ptr(0), _ind(0), _nnz(A._nnz), 
+    : Matrix<T>(A._m, A._n), _data(0), _ptr(0), _ind(0), _nnz(A._nnz),
       _ord(A._ord) {
 
   CpuData<T> *info_A = reinterpret_cast<CpuData<T>*>(A._info);
@@ -183,10 +183,10 @@ int MatrixSparse<T>::Equil(T *d, T *e,
   // of sign bits too.
   if (num_el > num_chars * 8) {
     if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-      SetSignSingle(_data + num_chars * 8, sign + num_chars, 
+      SetSignSingle(_data + num_chars * 8, sign + num_chars,
           num_el - num_chars * 8, SquareF<T>());
     } else {
-      SetSignSingle(_data + num_chars * 8, sign + num_chars, 
+      SetSignSingle(_data + num_chars * 8, sign + num_chars,
           num_el - num_chars * 8, AbsF<T>());
     }
   }
@@ -205,10 +205,10 @@ int MatrixSparse<T>::Equil(T *d, T *e,
   // Deal with last few entries if num_el is not a multiple of 8.
   if (num_el > num_chars * 8) {
     if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-      UnSetSignSingle(_data + num_chars * 8, sign + num_chars, 
+      UnSetSignSingle(_data + num_chars * 8, sign + num_chars,
           num_el - num_chars * 8, SqrtF<T>());
     } else {
-      UnSetSignSingle(_data + num_chars * 8, sign + num_chars, 
+      UnSetSignSingle(_data + num_chars * 8, sign + num_chars,
           num_el - num_chars * 8, IdentityF<T>());
     }
   }

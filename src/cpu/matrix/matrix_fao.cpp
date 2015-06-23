@@ -1,4 +1,5 @@
 #include "gsl/gsl_vector.h"
+#include "gsl/gsl_blas.h"
 #include "util.h"
 #include "equil_helper.h"
 #include "matrix/matrix.h"
@@ -34,7 +35,7 @@ T NormEst(NormTypes norm_type, const MatrixFAO<T>& A);
 }  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
-/////////////////////// MatrixDense Implementation /////////////////////////////
+/////////////////////// MatrixFAO Implementation /////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 template <typename T>
 MatrixFAO<T>::MatrixFAO(T *dag_output, size_t m, T *dag_input, size_t n,
@@ -42,11 +43,13 @@ MatrixFAO<T>::MatrixFAO(T *dag_output, size_t m, T *dag_input, size_t n,
                         void *dag) :  Matrix<T>(m, n) {
   this->_dag_output = gsl::vector_view_array<T>(dag_output, m);
   this->_dag_input = gsl::vector_view_array<T>(dag_input, n);
-  this->_m = m;
-  this->_n = n;
   this->_Amul = Amul;
   this->_ATmul = ATmul;
   this->_dag = dag;
+  this->_done_equil = false;
+  // TODO why do I need to set this here?
+  this->_m = m;
+  this->_n = n;
 }
 
 template <typename T>
@@ -75,9 +78,9 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
   gsl::vector<T> x_vec, y_vec;
   // TODO factor out common code.
   if (trans == 'n' || trans == 'N') {
-    // x_vec = gsl::vector_view_array<T>(x, this->_n);
+    x_vec = gsl::vector_view_array<T>(x, this->_n);
     y_vec = gsl::vector_view_array<T>(y, this->_m);
-    gsl::vector_memcpy<T>(dag_input, x);
+    gsl::vector_memcpy<T>(dag_input, &x_vec);
     gsl::vector_scale<T>(dag_input, alpha);
     // Multiply by D.
     if (this->_done_equil) {
@@ -91,15 +94,14 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     gsl::vector_scale(&y_vec, beta);
     gsl::vector_add<T>(&y_vec, dag_output);
   } else {
-    // x_vec = gsl::vector_view_array<T>(x, this->_m);
+    x_vec = gsl::vector_view_array<T>(x, this->_m);
     y_vec = gsl::vector_view_array<T>(y, this->_n);
-    gsl::vector_memcpy<T>(dag_output, x);
+    gsl::vector_memcpy<T>(dag_output, &x_vec);
     gsl::vector_scale<T>(dag_output, alpha);
     // Multiply by E.
     if (this->_done_equil) {
       gsl::vector_mul<T>(dag_output, &this->_e);
     }
-    gsl::vector_memcpy<T>(dag_output, &x_vec);
     this->_ATmul(this->_dag);
     // Multiply by D.
     if (this->_done_equil) {
@@ -108,7 +110,6 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     gsl::vector_scale<T>(&y_vec, beta);
     gsl::vector_add<T>(&y_vec, dag_input);
   }
-
   return 0;
 }
 
@@ -124,10 +125,10 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   // SinkhornKnopp(this, d, e, constrain_d, constrain_e);
 
   // Compute D := sqrt(D), E := sqrt(E), if 2-norm was equilibrated.
-  if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-    std::transform(d, d + this->_m, d, SqrtF<T>());
-    std::transform(e, e + this->_n, e, SqrtF<T>());
-  }
+  // if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
+  //   std::transform(d, d + this->_m, d, SqrtF<T>());
+  //   std::transform(e, e + this->_n, e, SqrtF<T>());
+  // }
 
   // Scale A to have norm of 1 (in the kNormNormalize norm).
   T normA = NormEst(kNormNormalize, *this);
@@ -135,15 +136,14 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   // Scale d and e to account for normalization of A.
   gsl::vector<T> d_vec = gsl::vector_view_array<T>(d, this->_m);
   gsl::vector<T> e_vec = gsl::vector_view_array<T>(e, this->_n);
-  gsl::vector_scale(&d_vec, 1 / normA);
-  gsl::vector_scale(&e_vec, 1 / normA);
-
+  // gsl::vector_scale(&d_vec, 1 / normA);
+  // gsl::vector_scale(&e_vec, 1 / normA);
+  gsl::vector_set_all<T>(&d_vec, static_cast<T>(1.));
+  gsl::vector_set_all<T>(&e_vec, static_cast<T>(1.));
   // Save D and E.
-  this->_done_equil = 1;
-  this->_d = gsl::vector_view_array<T>(d, this->_m);
-  gsl::vector_set_all<T>(&this->_d, 1);
-  this->_e = gsl::vector_view_array<T>(e, this->_m);
-  gsl::vector_set_all<T>(&this->_e, 1);
+  this->_done_equil = true;
+  this->_d = d_vec;
+  this->_e = e_vec;
 
   DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
       gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));

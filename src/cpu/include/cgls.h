@@ -225,6 +225,9 @@ int Solve(const F& A, const INT m, const INT n, const T *b, T *x,
   // Make x a gsl vector.
   x_vec = gsl::vector_view_array(x, n);
 
+  // DEBUG
+  printf("CGLS Solve <><><><>< norm2(x) = %e\n", gsl::blas_nrm2(&s));
+  printf("CGLS Solve <><><><>< norm2(b) = %e\n", gsl::blas_nrm2(&r));
   // r = b - A*x.
   normx = gsl::blas_nrm2(&x_vec);
   if (normx > 0.) {
