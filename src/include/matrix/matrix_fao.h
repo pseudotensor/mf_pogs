@@ -23,8 +23,10 @@ class MatrixFAO : public Matrix<T> {
   const size_t _samples, _equil_steps;
 
   void GenRandS(gsl::vector<T> *s) const;
-  void RandRnsAE(gsl::vector<T> *output) const;
-  void RandRnsATD(gsl::vector<T> *output) const;
+  void RandRnsAE(gsl::vector<T> *output,
+                 const gsl::vector<T> *e) const;
+  void RandRnsATD(gsl::vector<T> *output,
+                  const gsl::vector<T> *d) const;
 
  public:
   // Constructor (only sets variables)

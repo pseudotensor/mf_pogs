@@ -232,6 +232,9 @@ int MatrixSparse<T>::Equil(T *d, T *e,
   gsl::vector<T> e_vec = gsl::vector_view_array<T>(e, this->_n);
   gsl::vector_scale(&d_vec, 1 / std::sqrt(normA));
   gsl::vector_scale(&e_vec, 1 / std::sqrt(normA));
+  printf("normA = %e\n", normA);
+  printf("norm(d) = %e\n", gsl::blas_nrm2(&d_vec));
+  printf("norm(e) = %e\n", gsl::blas_nrm2(&e_vec));
 
   DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
       gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));

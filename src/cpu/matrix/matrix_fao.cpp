@@ -15,8 +15,10 @@ namespace pogs {
 namespace {
 
 // File scoped constants.
-const NormTypes kNormEquilibrate = kNorm2;
-const NormTypes kNormNormalize   = kNormFro;
+// const NormTypes kNormEquilibrate = kNorm2;
+// const NormTypes kNormNormalize   = kNormFro;
+const float MIN_SCALE = 1e-3;
+const float MAX_SCALE = 1e3;
 
 // template <typename T>
 // struct CpuData {
@@ -26,16 +28,16 @@ const NormTypes kNormNormalize   = kNormFro;
 //       : orig_data(data), orig_ptr(ptr), orig_ind(ind) { }
 // };
 
-CBLAS_TRANSPOSE_t OpToCblasOp(char trans) {
-  ASSERT(trans == 'n' || trans == 'N' || trans == 't' || trans == 'T');
-  return trans == 'n' || trans == 'N' ? CblasNoTrans : CblasTrans;
-}
+// CBLAS_TRANSPOSE_t OpToCblasOp(char trans) {
+//   ASSERT(trans == 'n' || trans == 'N' || trans == 't' || trans == 'T');
+//   return trans == 'n' || trans == 'N' ? CblasNoTrans : CblasTrans;
+// }
 
 template <typename T>
 void AddOrCopy(gsl::vector<T> *y, const gsl::vector<T> *x, bool clear);
 
-template <typename T>
-T NormEst(NormTypes norm_type, const MatrixFAO<T>& A);
+// template <typename T>
+// T NormEst(NormTypes norm_type, const MatrixFAO<T>& A);
 
 }  // namespace
 
@@ -134,33 +136,48 @@ int MatrixFAO<T>::Equil(T *d, T *e,
 
   gsl::vector<T> d_vec = gsl::vector_view_array<T>(d, this->_m);
   gsl::vector<T> e_vec = gsl::vector_view_array<T>(e, this->_n);
+  gsl::vector_set_all<T>(&d_vec, 1.0);
+  gsl::vector_set_all<T>(&e_vec, 1.0);
   // Perform randomized Sinkhorn-Knopp equilibration.
   // alpha = n, beta = m, gamma = 0.
   T alpha = static_cast<T>(this->_n);
   T beta = static_cast<T>(this->_m);
+  // T gamma = static_cast<T>(0.);
   gsl::vector<T> rnsATD = gsl::vector_alloc<T>(this->_n);
   for (size_t i=0; i < this->_equil_steps; ++i) {
     // Set D = alpha*(|A|^2diag(E)^2 + alpha^2*gamma*1)^{-1/2}.
-    RandRnsAE(&d_vec);
-    gsl::vector_add_constant<T>(&d_vec, alpha*alpha);
+    RandRnsAE(&d_vec, &e_vec);
+    // gsl::vector_add_constant<T>(&d_vec, alpha*alpha*gamma);
     std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, SqrtF<T>());
+    // Round D's entries to be in [MIN_SCALE, MAX_SCALE].
+    gsl::vector_bound<T>(&d_vec, MIN_SCALE, MAX_SCALE);
     std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, ReciprF<T>());
+    gsl::vector_scale<T>(&d_vec, alpha);
     // Set E = beta*(|A^T|^2diag(D)^2 + gamma*beta^2*1)^{-1/2}.
-    RandRnsATD(&e_vec);
+    RandRnsATD(&e_vec, &d_vec);
     // Save the row norms squared of A^TD.
     gsl::vector_memcpy<T>(&rnsATD, &e_vec);
-    gsl::vector_add_constant<T>(&e_vec, beta*beta);
+    // gsl::vector_add_constant<T>(&e_vec, beta*beta*gamma);
     std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, SqrtF<T>());
+    // Round E's entries to be in [MIN_SCALE, MAX_SCALE].
+    gsl::vector_bound<T>(&e_vec, MIN_SCALE, MAX_SCALE);
     std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, ReciprF<T>());
+    gsl::vector_scale(&e_vec, beta);
   }
 
   // Scale A to have Frobenius norm of 1.
   gsl::vector_mul<T>(&rnsATD, &e_vec);
   T normA;
   gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
+  printf("normA = %e\n", normA);
   // Scale d and e to account for normalization of A.
-  gsl::vector_scale(&d_vec, 1 / normA);
-  gsl::vector_scale(&e_vec, 1 / normA);
+  gsl::vector_scale(&d_vec, 1 / std::sqrt(normA));
+  gsl::vector_scale(&e_vec, 1 / std::sqrt(normA));
+  printf("norm(d) = %e\n", gsl::blas_nrm2(&d_vec));
+  printf("norm(e) = %e\n", gsl::blas_nrm2(&e_vec));
+
+  // gsl::vector_set_all<T>(&d_vec, 1.0);
+  // gsl::vector_set_all<T>(&e_vec, 1.0);
   // Save D and E.
   this->_done_equil = true;
   this->_d = d_vec;
@@ -178,42 +195,53 @@ template <typename T>
 void MatrixFAO<T>::GenRandS(gsl::vector<T> *s) const {
   for (size_t i = 0; i < s->size; ++i) {
     int draw = 2*(rand() % 2) - 1;
-    gsl::vector_set<T>(s, i, static_cast<T>(draw));
-    printf("s[%zu] = %e\n", i, s->data[i]);
+    gsl::vector_set<T>(s, i, draw);
   }
 }
 
 
 // Estimate the row norm squared of AE.
 template <typename T>
-void MatrixFAO<T>::RandRnsAE(gsl::vector<T> *output) const {
-  ASSERT(this->_done_equil);
+void MatrixFAO<T>::RandRnsAE(gsl::vector<T> *output,
+  const gsl::vector<T> *e) const {
+  gsl::vector_scale<T>(output, 0);
   gsl::vector<T> *dag_input =
     const_cast< gsl::vector<T> *>(&this->_dag_input);
+  gsl::vector<T> *dag_output =
+    const_cast< gsl::vector<T> *>(&this->_dag_output);
   for (size_t i = 0; i < this->_samples; ++i) {
     GenRandS(dag_input);
-    gsl::vector_mul<T>(dag_input, &this->_d);
+    gsl::vector_mul<T>(dag_input, e);
     this->_Amul(this->_dag);
-    gsl::vector_mul<T>(dag_input, dag_input);
-    AddOrCopy(output, dag_input, i == 0);
+    gsl::vector_mul<T>(dag_output, dag_output);
+    // printf("AE output[0] = %e\n", output->data[0]);
+    gsl::vector_add<T>(output, dag_output);
   }
-  gsl::vector_scale(output, static_cast<T>(1.)/static_cast<T>(this->_samples));
+  printf("before div norm output AE = %e\n", gsl::blas_nrm2(output));
+  gsl::vector_scale<T>(output, 1.0/static_cast<T>(this->_samples));
+  printf("norm output AE = %e\n", gsl::blas_nrm2(output));
 }
 
 // Estimate the row norm squared of A^TD.
 template <typename T>
-void MatrixFAO<T>::RandRnsATD(gsl::vector<T> *output) const {
-  ASSERT(this->_done_equil);
+void MatrixFAO<T>::RandRnsATD(gsl::vector<T> *output,
+  const gsl::vector<T> *d) const {
+  gsl::vector_scale<T>(output, 0);
+  gsl::vector<T> *dag_input =
+    const_cast< gsl::vector<T> *>(&this->_dag_input);
   gsl::vector<T> *dag_output =
     const_cast< gsl::vector<T> *>(&this->_dag_output);
   for (size_t i = 0; i < this->_samples; ++i) {
     GenRandS(dag_output);
-    gsl::vector_mul<T>(dag_output, &this->_e);
+    gsl::vector_mul<T>(dag_output, d);
     this->_ATmul(this->_dag);
-    gsl::vector_mul<T>(dag_output, dag_output);
-    AddOrCopy(output, dag_output, i == 0);
+    gsl::vector_mul<T>(dag_input, dag_input);
+    // printf("ATD output[0] = %e\n", output->data[0]);
+    gsl::vector_add<T>(output, dag_input);
   }
-  gsl::vector_scale(output, static_cast<T>(1.)/static_cast<T>(this->_samples));
+  printf("before div norm output ATD = %e\n", gsl::blas_nrm2(output));
+  gsl::vector_scale<T>(output, 1.0/static_cast<T>(this->_samples));
+  printf("norm output ATD = %e\n", gsl::blas_nrm2(output));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -242,8 +270,8 @@ namespace {
 
 // Either y += x or y = x.
 template <typename T>
-void AddOrCopy(gsl::vector<T> *y, const gsl::vector<T> *x, bool clear) {
-    if (clear) {
+void AddOrCopy(gsl::vector<T> *y, const gsl::vector<T> *x, bool copy) {
+    if (copy) {
       gsl::vector_memcpy<T>(y, x);
     } else {
       gsl::vector_add<T>(y, x);

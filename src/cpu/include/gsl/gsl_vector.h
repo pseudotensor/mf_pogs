@@ -99,7 +99,7 @@ void vector_memcpy(vector<T> *x, const vector<T> *y) {
   if (x->stride == 1 && y->stride == 1) {
     memcpy(x->data, y->data, x->size * sizeof(T));
   } else {
-    for (unsigned int i = 0; i < x->size; ++i) 
+    for (unsigned int i = 0; i < x->size; ++i)
       vector_set(x, i, vector_get(y, i));
   }
 }
@@ -119,7 +119,7 @@ void vector_memcpy(T *x, const vector<T> *y) {
   if (y->stride == 1) {
     memcpy(x, y->data, y->size * sizeof(T));
   } else {
-    for (unsigned int i = 0; i < y->size; ++i) 
+    for (unsigned int i = 0; i < y->size; ++i)
       x[i] = vector_get(y, i);
   }
 }
@@ -135,6 +135,16 @@ template <typename T>
 void vector_scale(vector<T> *a, T x) {
   for (unsigned int i = 0; i < a->size; ++i)
     a->data[i * a->stride] *= x;
+}
+
+template <typename T>
+void vector_bound(vector<T> *x, T lower, T upper) {
+  for (unsigned int i = 0; i < x->size; i++)
+    if (x->data[i * x->stride] < lower) {
+      x->data[i * x->stride] = lower;
+    } else if (x->data[i * x->stride] > upper) {
+      x->data[i * x->stride] = upper;
+    }
 }
 
 template <typename T>
