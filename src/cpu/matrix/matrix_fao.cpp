@@ -61,13 +61,17 @@ MatrixFAO<T>::MatrixFAO(T *dag_output, size_t m, T *dag_input, size_t n,
   // TODO why do I need to set this here?
   this->_m = m;
   this->_n = n;
+  this->_d = gsl::vector_calloc<T>(m);
+  this->_e = gsl::vector_calloc<T>(n);
   // TODO move this.
   srand(1);
 }
 
 template <typename T>
 MatrixFAO<T>::~MatrixFAO() {
-  // TODO
+  // TODO why can't I free this memory?
+  // gsl::vector_free<T>(&this->_d);
+  // gsl::vector_free<T>(&this->_e);
 }
 
 template <typename T>
@@ -94,32 +98,32 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     x_vec = gsl::vector_view_array<T>(x, this->_n);
     y_vec = gsl::vector_view_array<T>(y, this->_m);
     gsl::vector_memcpy<T>(dag_input, &x_vec);
-    gsl::vector_scale<T>(dag_input, alpha);
-    // Multiply by D.
-    if (this->_done_equil) {
-      gsl::vector_mul<T>(dag_input, &this->_d);
-    }
+    // // Multiply by D.
+    // if (this->_done_equil) {
+    //   gsl::vector_mul<T>(dag_input, &this->_d);
+    // }
     this->_Amul(this->_dag);
-    // Multiply by E.
-    if (this->_done_equil) {
-      gsl::vector_mul<T>(dag_output, &this->_e);
-    }
+    gsl::vector_scale<T>(dag_output, alpha);
+    // // Multiply by E.
+    // if (this->_done_equil) {
+    //   gsl::vector_mul<T>(dag_output, &this->_e);
+    // }
     gsl::vector_scale(&y_vec, beta);
     gsl::vector_add<T>(&y_vec, dag_output);
   } else {
     x_vec = gsl::vector_view_array<T>(x, this->_m);
     y_vec = gsl::vector_view_array<T>(y, this->_n);
     gsl::vector_memcpy<T>(dag_output, &x_vec);
-    gsl::vector_scale<T>(dag_output, alpha);
-    // Multiply by E.
-    if (this->_done_equil) {
-      gsl::vector_mul<T>(dag_output, &this->_e);
-    }
+    // // Multiply by E.
+    // if (this->_done_equil) {
+    //   gsl::vector_mul<T>(dag_output, &this->_e);
+    // }
     this->_ATmul(this->_dag);
-    // Multiply by D.
-    if (this->_done_equil) {
-      gsl::vector_mul<T>(dag_input, &this->_d);
-    }
+     gsl::vector_scale<T>(dag_input, alpha);
+    // // Multiply by D.
+    // if (this->_done_equil) {
+    //   gsl::vector_mul<T>(dag_input, &this->_d);
+    // }
     gsl::vector_scale<T>(&y_vec, beta);
     gsl::vector_add<T>(&y_vec, dag_input);
   }
@@ -176,12 +180,12 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   printf("norm(d) = %e\n", gsl::blas_nrm2(&d_vec));
   printf("norm(e) = %e\n", gsl::blas_nrm2(&e_vec));
 
-  // gsl::vector_set_all<T>(&d_vec, 1.0);
-  // gsl::vector_set_all<T>(&e_vec, 1.0);
+  gsl::vector_set_all<T>(&d_vec, 1.0);
+  gsl::vector_set_all<T>(&e_vec, 1.0);
   // Save D and E.
   this->_done_equil = true;
-  this->_d = d_vec;
-  this->_e = e_vec;
+  gsl::vector_memcpy<T>(&this->_d, &d_vec);
+  gsl::vector_memcpy<T>(&this->_e, &e_vec);
 
   DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
       gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));
