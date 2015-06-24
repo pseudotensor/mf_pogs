@@ -61,17 +61,13 @@ MatrixFAO<T>::MatrixFAO(T *dag_output, size_t m, T *dag_input, size_t n,
   // TODO why do I need to set this here?
   this->_m = m;
   this->_n = n;
-  this->_d = gsl::vector_calloc<T>(m);
-  this->_e = gsl::vector_calloc<T>(n);
   // TODO move this.
   srand(1);
 }
 
 template <typename T>
 MatrixFAO<T>::~MatrixFAO() {
-  // TODO why can't I free this memory?
-  // gsl::vector_free<T>(&this->_d);
-  // gsl::vector_free<T>(&this->_e);
+  // TODO
 }
 
 template <typename T>
@@ -88,6 +84,12 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
   DEBUG_ASSERT(this->_done_init);
   if (!this->_done_init)
     return 1;
+  // for (size_t i = 0; i < this->_m; ++i) {
+  //   printf("D[%zu] = %e\n", i, this->_d.data[i]);
+  // }
+  // for (size_t i = 0; i < this->_n; ++i) {
+  //   printf("E[%zu] = %e\n", i, this->_e.data[i]);
+  // }
   gsl::vector<T> *dag_input =
     const_cast< gsl::vector<T> *>(&this->_dag_input);
   gsl::vector<T> *dag_output =
@@ -98,32 +100,32 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     x_vec = gsl::vector_view_array<T>(x, this->_n);
     y_vec = gsl::vector_view_array<T>(y, this->_m);
     gsl::vector_memcpy<T>(dag_input, &x_vec);
-    // // Multiply by D.
-    // if (this->_done_equil) {
-    //   gsl::vector_mul<T>(dag_input, &this->_d);
-    // }
+    // Multiply by E.
+    if (this->_done_equil) {
+      gsl::vector_mul<T>(dag_input, &(this->_e));
+    }
     this->_Amul(this->_dag);
     gsl::vector_scale<T>(dag_output, alpha);
-    // // Multiply by E.
-    // if (this->_done_equil) {
-    //   gsl::vector_mul<T>(dag_output, &this->_e);
-    // }
+    // Multiply by D.
+    if (this->_done_equil) {
+      gsl::vector_mul<T>(dag_output, &(this->_d));
+    }
     gsl::vector_scale(&y_vec, beta);
     gsl::vector_add<T>(&y_vec, dag_output);
   } else {
     x_vec = gsl::vector_view_array<T>(x, this->_m);
     y_vec = gsl::vector_view_array<T>(y, this->_n);
     gsl::vector_memcpy<T>(dag_output, &x_vec);
-    // // Multiply by E.
-    // if (this->_done_equil) {
-    //   gsl::vector_mul<T>(dag_output, &this->_e);
-    // }
+    // Multiply by D.
+    if (this->_done_equil) {
+      gsl::vector_mul<T>(dag_output, &(this->_d));
+    }
     this->_ATmul(this->_dag);
-     gsl::vector_scale<T>(dag_input, alpha);
-    // // Multiply by D.
-    // if (this->_done_equil) {
-    //   gsl::vector_mul<T>(dag_input, &this->_d);
-    // }
+    gsl::vector_scale<T>(dag_input, alpha);
+    // Multiply by E.
+    if (this->_done_equil) {
+      gsl::vector_mul<T>(dag_input, &(this->_e));
+    }
     gsl::vector_scale<T>(&y_vec, beta);
     gsl::vector_add<T>(&y_vec, dag_input);
   }
@@ -156,7 +158,7 @@ int MatrixFAO<T>::Equil(T *d, T *e,
     // Round D's entries to be in [MIN_SCALE, MAX_SCALE].
     gsl::vector_bound<T>(&d_vec, MIN_SCALE, MAX_SCALE);
     std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, ReciprF<T>());
-    gsl::vector_scale<T>(&d_vec, alpha);
+    // gsl::vector_scale<T>(&d_vec, alpha);
     // Set E = beta*(|A^T|^2diag(D)^2 + gamma*beta^2*1)^{-1/2}.
     RandRnsATD(&e_vec, &d_vec);
     // Save the row norms squared of A^TD.
@@ -166,7 +168,7 @@ int MatrixFAO<T>::Equil(T *d, T *e,
     // Round E's entries to be in [MIN_SCALE, MAX_SCALE].
     gsl::vector_bound<T>(&e_vec, MIN_SCALE, MAX_SCALE);
     std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, ReciprF<T>());
-    gsl::vector_scale(&e_vec, beta);
+    // gsl::vector_scale(&e_vec, beta);
   }
 
   // Scale A to have Frobenius norm of 1.
@@ -180,12 +182,14 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   printf("norm(d) = %e\n", gsl::blas_nrm2(&d_vec));
   printf("norm(e) = %e\n", gsl::blas_nrm2(&e_vec));
 
-  gsl::vector_set_all<T>(&d_vec, 1.0);
-  gsl::vector_set_all<T>(&e_vec, 1.0);
+  // gsl::vector_set_all<T>(&d_vec, 1.0);
+  // gsl::vector_set_all<T>(&e_vec, 1.0);
   // Save D and E.
   this->_done_equil = true;
-  gsl::vector_memcpy<T>(&this->_d, &d_vec);
-  gsl::vector_memcpy<T>(&this->_e, &e_vec);
+  this->_d = d_vec;
+  this->_e = e_vec;
+  printf("D[0] = %e\n", this->_d.data[0]);
+  printf("E[0] = %e\n", this->_e.data[0]);
 
   DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
       gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));

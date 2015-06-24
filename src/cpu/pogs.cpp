@@ -217,11 +217,11 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
     // Project onto y = Ax.
     T proj_tol = kProjTolMin / std::pow(static_cast<T>(k + 1), kProjTolPow);
     proj_tol = std::max(proj_tol, kProjTolMax);
-    printf("before project norm2(x) = %e\n", gsl::blas_nrm2(&x));
-    printf("before project norm2(y) = %e\n", gsl::blas_nrm2(&y));
+    // printf("before project norm2(x) = %e\n", gsl::blas_nrm2(&x));
+    // printf("before project norm2(y) = %e\n", gsl::blas_nrm2(&y));
     _P.Project(xtemp.data, ytemp.data, kOne, x.data, y.data, proj_tol);
-    printf("after project norm2(x) = %e\n", gsl::blas_nrm2(&x));
-    printf("after project norm2(y) = %e\n", gsl::blas_nrm2(&y));
+    // printf("after project norm2(x) = %e\n", gsl::blas_nrm2(&x));
+    // printf("after project norm2(y) = %e\n", gsl::blas_nrm2(&y));
     // Calculate residuals.
     gsl::vector_memcpy(&ztemp, &zprev);
     gsl::blas_axpy(-kOne, &z, &ztemp);
