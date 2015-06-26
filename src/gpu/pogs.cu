@@ -205,13 +205,13 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
 
     // Evaluate Proximal Operators
     cml::blas_axpy(hdl, -kOne, &zt, &z);
-    printf("before prox norm(x) = %e\n", cml::blas_nrm2(hdl, &x));
-    printf("before prox norm(y) = %e\n", cml::blas_nrm2(hdl, &y));
-    printf("rho = %e\n", _rho);
+    // printf("before prox norm(x) = %e\n", cml::blas_nrm2(hdl, &x));
+    // printf("before prox norm(y) = %e\n", cml::blas_nrm2(hdl, &y));
+    // printf("rho = %e\n", _rho);
     obj->prox(x.data, y.data, x12.data, y12.data, _rho);
     CUDA_CHECK_ERR();
-    printf("after prox norm(x12) = %e\n", cml::blas_nrm2(hdl, &x12));
-    printf("after prox norm(y12) = %e\n", cml::blas_nrm2(hdl, &y12));
+    // printf("after prox norm(x12) = %e\n", cml::blas_nrm2(hdl, &x12));
+    // printf("after prox norm(y12) = %e\n", cml::blas_nrm2(hdl, &y12));
 
     // Compute gap, optval, and tolerances.
     cml::blas_axpy(hdl, -kOne, &z12, &z);
@@ -488,10 +488,6 @@ class PogsObjectiveCone : public PogsObjective<T> {
     for (auto &stream : streams_y) {
       cudaStreamCreate(&stream);
     }
-    for(int i = 0; i < c.size(); i++) {
-      std::cout << "c[" << i << "] = " << this->c[i] << std::endl;
-      std::cout << "b[" << i << "] = " << this->b[i] << std::endl;
-    }
   }
 
   ~PogsObjectiveCone() {
@@ -509,20 +505,11 @@ class PogsObjectiveCone : public PogsObjective<T> {
   }
 
   void prox(const T *x_in, const T *y_in, T *x_out, T *y_out, T rho) const {
-
-    cublasHandle_t hdl;
-    cublasCreate(&hdl);
-    for(int i = 0; i < c.size(); i++) {
-      std::cout << "c[" << i << "] = " << c[i] << std::endl;
-      std::cout << "b[" << i << "] = " << b[i] << std::endl;
-    }
-
     auto x_in_vec = cml::vector_view_array<T>(x_in, c.size());
     auto x_out_vec = cml::vector_view_array<T>(x_out, c.size());
     cudaMemcpy(x_out, x_in, c.size() * sizeof(T), cudaMemcpyDeviceToDevice);
     thrust::transform(c.begin(), c.end(), thrust::device_pointer_cast(x_out),
         thrust::device_pointer_cast(x_out), Updater<T>(rho));
-    printf("norm(x_out) = %e\n", cml::blas_nrm2(hdl, &x_out_vec));
 
     cudaMemcpy(y_out, y_in, b.size() * sizeof(T), cudaMemcpyDeviceToDevice);
     thrust::transform(b.begin(), b.end(), thrust::device_pointer_cast(y_out),

@@ -128,8 +128,8 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
   if (trans == 'n' || trans == 'N') {
     x_vec = cml::vector_view_array<T>(x, this->_n);
     y_vec = cml::vector_view_array<T>(y, this->_m);
-    printf("before Amul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
-    printf("before Amul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
+    // printf("before Amul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
+    // printf("before Amul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
     cml::vector_memcpy<T>(dag_input, &x_vec);
     // Multiply by E.
     // if (this->_done_equil) {
@@ -146,8 +146,8 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
   } else {
     x_vec = cml::vector_view_array<T>(x, this->_m);
     y_vec = cml::vector_view_array<T>(y, this->_n);
-    printf("before ATmul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
-    printf("before ATmul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
+    // printf("before ATmul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
+    // printf("before ATmul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
     cml::vector_memcpy<T>(dag_output, &x_vec);
     // Multiply by D.
     // if (this->_done_equil) {
@@ -164,8 +164,8 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
   }
   cudaDeviceSynchronize();
   CUDA_CHECK_ERR();
-  printf("after mul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
-  printf("after mul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
+  // printf("after mul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
+  // printf("after mul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
   return 0;
 }
 
@@ -199,7 +199,7 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   CUDA_CHECK_ERR();
   if (!this->_done_init)
     return 1;
-  return 0;
+
 
   GpuData<T> *info = reinterpret_cast<GpuData<T>*>(this->_info);
   cublasHandle_t hdl = info->hdl;
@@ -209,6 +209,7 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   cml::vector<T> e_vec = cml::vector_view_array<T>(e, this->_n);
   cml::vector_set_all<T>(&d_vec, 1.0);
   cml::vector_set_all<T>(&e_vec, 1.0);
+  return 0;
   // Perform randomized Sinkhorn-Knopp equilibration.
   // alpha = n, beta = m, gamma = 0.
   // T alpha = static_cast<T>(this->_n);
