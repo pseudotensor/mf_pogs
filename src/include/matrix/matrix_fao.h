@@ -1,32 +1,23 @@
 #ifndef MATRIX_MATRIX_FAO_H_
 #define MATRIX_MATRIX_FAO_H_
 
-#include <random>
-
-#include "gsl/gsl_vector.h"
-
 namespace pogs {
 
 template <typename T>
 class MatrixFAO : public Matrix<T> {
  private:
-  gsl::vector<T> _dag_output;
-  gsl::vector<T> _dag_input;
+  T *_info;
+  // gsl::vector<T> _dag_output;
+  // gsl::vector<T> _dag_input;
   size_t _m;
   size_t _n;
   void (*_Amul)(void *);
   void (*_ATmul)(void *);
   void * _dag;
-  gsl::vector<T> _d;
-  gsl::vector<T> _e;
+  // gsl::vector<T> _d;
+  // gsl::vector<T> _e;
   bool _done_equil;
   const size_t _samples, _equil_steps;
-
-  void GenRandS(gsl::vector<T> *s) const;
-  void RandRnsAE(gsl::vector<T> *output,
-                 const gsl::vector<T> *e) const;
-  void RandRnsATD(gsl::vector<T> *output,
-                  const gsl::vector<T> *d) const;
 
  public:
   // Constructor (only sets variables)

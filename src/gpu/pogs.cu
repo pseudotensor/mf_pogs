@@ -153,7 +153,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
 
   // Make an initial guess for (x0 or lambda0).
   if (_init_x && !_init_lambda) {
-    // Alternating projections to satisfy 
+    // Alternating projections to satisfy
     //   1. \lambda \in \partial f(y), \mu \in \partial g(x)
     //   2. \mu = -A^T\lambda
     cml::vector_set_all(&zprev, kZero);
@@ -330,7 +330,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
   // Print summary
   if (_verbose > 0) {
     Printf(__HBAR__
-        "Status: %s\n" 
+        "Status: %s\n"
         "Timing: Total = %3.2e s, Init = %3.2e s\n"
         "Iter  : %u\n",
         PogsStatusString(status).c_str(), timer<double>() - t0, time_init, k);
@@ -624,6 +624,8 @@ template class PogsCone<double, MatrixDense<double>,
     ProjectorCgls<double, MatrixDense<double> > >;
 template class PogsCone<double, MatrixSparse<double>,
     ProjectorCgls<double, MatrixSparse<double> > >;
+template class PogsCone<double, MatrixFAO<double>,
+    ProjectorCgls<double, MatrixFAO<double> > >;
 #endif
 
 #if !defined(POGS_SINGLE) || POGS_SINGLE==1
@@ -640,6 +642,8 @@ template class PogsCone<float, MatrixDense<float>,
     ProjectorCgls<float, MatrixDense<float> > >;
 template class PogsCone<float, MatrixSparse<float>,
     ProjectorCgls<float, MatrixSparse<float> > >;
+template class PogsCone<float, MatrixFAO<float>,
+    ProjectorCgls<float, MatrixFAO<float> > >;
 #endif
 
 }  // namespace pogs

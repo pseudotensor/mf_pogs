@@ -8,6 +8,7 @@
 #include "cml/cml_vector.cuh"
 #include "matrix/matrix_dense.h"
 #include "matrix/matrix_sparse.h"
+#include "matrix/matrix_fao.h"
 #include "projector/projector_cgls.h"
 #include "projector_helper.cuh"
 #include "util.h"
@@ -117,11 +118,13 @@ int ProjectorCgls<T, M>::Project(const T *x0, const T *y0, T s, T *x, T *y,
 #if !defined(POGS_DOUBLE) || POGS_DOUBLE==1
 template class ProjectorCgls<double, MatrixDense<double> >;
 template class ProjectorCgls<double, MatrixSparse<double> >;
+template class ProjectorCgls<double, MatrixFAO<double> >;
 #endif
 
 #if !defined(POGS_SINGLE) || POGS_SINGLE==1
 template class ProjectorCgls<float, MatrixDense<float> >;
 template class ProjectorCgls<float, MatrixSparse<float> >;
+template class ProjectorCgls<float, MatrixFAO<float> >;
 #endif
 
 }  // namespace pogs

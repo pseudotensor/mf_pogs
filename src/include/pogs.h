@@ -143,7 +143,6 @@ class PogsCone : public PogsImplementation<T, M, P> {
 };
 
 // Templated typedefs
-#ifndef __CUDACC__
 template <typename T, typename M>
 using PogsDirect = PogsSeparable<T, M, ProjectorDirect<T, M> >;
 
@@ -155,7 +154,6 @@ using PogsDirectCone = PogsCone<T, M, ProjectorDirect<T, M> >;
 
 template <typename T, typename M>
 using PogsIndirectCone = PogsCone<T, M, ProjectorCgls<T, M> >;
-#endif
 
 // String version of status message.
 inline std::string PogsStatusString(PogsStatus status) {
