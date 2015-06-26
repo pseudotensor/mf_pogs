@@ -47,6 +47,7 @@ inline bool IsSeparable(Cone cone) {
   return false;
 }
 
+// TODO inline
 inline bool ValidCone(const std::vector<ConeConstraint>& cones, size_t dim) {
   std::set<CONE_IDX> idx;
   for (const auto &cone : cones) {

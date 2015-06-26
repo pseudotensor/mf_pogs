@@ -23,11 +23,12 @@ struct GpuData {
   cublasHandle_t hdl;
   GpuData() {
     cublasCreate(&hdl);
-    DEBUG_CUDA_CHECK_ERR();
+    CUDA_CHECK_ERR();
   }
   ~GpuData() {
+    CUDA_CHECK_ERR();
     cublasDestroy(hdl);
-    DEBUG_CUDA_CHECK_ERR();
+    CUDA_CHECK_ERR();
   }
 };
 
@@ -112,7 +113,6 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
 
   GpuData<T> *info = reinterpret_cast<GpuData<T>*>(this->_info);
   cublasHandle_t hdl = info->hdl;
-
   // for (size_t i = 0; i < this->_m; ++i) {
   //   printf("D[%zu] = %e\n", i, this->_d.data[i]);
   // }
@@ -128,39 +128,44 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
   if (trans == 'n' || trans == 'N') {
     x_vec = cml::vector_view_array<T>(x, this->_n);
     y_vec = cml::vector_view_array<T>(y, this->_m);
+    printf("before Amul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
+    printf("before Amul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
     cml::vector_memcpy<T>(dag_input, &x_vec);
     // Multiply by E.
-    if (this->_done_equil) {
-      cml::vector_mul<T>(dag_input, &(info->_e));
-    }
+    // if (this->_done_equil) {
+    //   cml::vector_mul<T>(dag_input, &(info->_e));
+    // }
     this->_Amul(this->_dag);
     cml::vector_scale<T>(dag_output, alpha);
     // Multiply by D.
-    if (this->_done_equil) {
-      cml::vector_mul<T>(dag_output, &(info->_d));
-    }
+    // if (this->_done_equil) {
+    //   cml::vector_mul<T>(dag_output, &(info->_d));
+    // }
     cml::vector_scale(&y_vec, beta);
     cml::blas_axpy(hdl, 1., dag_output, &y_vec);
   } else {
     x_vec = cml::vector_view_array<T>(x, this->_m);
     y_vec = cml::vector_view_array<T>(y, this->_n);
+    printf("before ATmul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
+    printf("before ATmul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
     cml::vector_memcpy<T>(dag_output, &x_vec);
     // Multiply by D.
-    if (this->_done_equil) {
-      cml::vector_mul<T>(dag_output, &(info->_d));
-    }
+    // if (this->_done_equil) {
+    //   cml::vector_mul<T>(dag_output, &(info->_d));
+    // }
     this->_ATmul(this->_dag);
     cml::vector_scale<T>(dag_input, alpha);
     // Multiply by E.
-    if (this->_done_equil) {
-      cml::vector_mul<T>(dag_input, &(info->_e));
-    }
+    // if (this->_done_equil) {
+    //   cml::vector_mul<T>(dag_input, &(info->_e));
+    // }
     cml::vector_scale<T>(&y_vec, beta);
     cml::blas_axpy(hdl, 1., dag_input, &y_vec);
   }
   cudaDeviceSynchronize();
   CUDA_CHECK_ERR();
-
+  printf("after mul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
+  printf("after mul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
   return 0;
 }
 
@@ -191,6 +196,7 @@ int MatrixFAO<T>::Equil(T *d, T *e,
                         const std::function<void(T*)> &constrain_d,
                         const std::function<void(T*)> &constrain_e) {
   DEBUG_ASSERT(this->_done_init);
+  CUDA_CHECK_ERR();
   if (!this->_done_init)
     return 1;
   return 0;
@@ -205,8 +211,8 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   cml::vector_set_all<T>(&e_vec, 1.0);
   // Perform randomized Sinkhorn-Knopp equilibration.
   // alpha = n, beta = m, gamma = 0.
-  T alpha = static_cast<T>(this->_n);
-  T beta = static_cast<T>(this->_m);
+  // T alpha = static_cast<T>(this->_n);
+  // T beta = static_cast<T>(this->_m);
   // T gamma = static_cast<T>(0.);
   cml::vector<T> rnsATD = cml::vector_alloc<T>(this->_n);
   for (size_t i=0; i < this->_equil_steps; ++i) {
@@ -316,9 +322,9 @@ int MatrixFAO<T>::Equil(T *d, T *e,
 // template <typename T>
 // void MatrixFAO<T>::RandRnsAE(MatrixFAO<T> *mat, cml::vector<T> *output,
 //   const cml::vector<T> *e) const {
-// 
+//
 //   GpuData<T> *info = reinterpret_cast<GpuData<T>*>(mat->_info);
-// 
+//
 //   cml::vector_scale<T>(output, 0);
 //   cml::vector<T> *dag_input =
 //     const_cast< cml::vector<T> *>(&info->_dag_input);
@@ -341,9 +347,9 @@ int MatrixFAO<T>::Equil(T *d, T *e,
 // template <typename T>
 // void MatrixFAO<T>::RandRnsATD(cml::vector<T> *output,
 //   const cml::vector<T> *d) const {
-// 
+//
 //   GpuData<T> *info = reinterpret_cast<GpuData<T>*>(this->_info);
-// 
+//
 //   cml::vector_scale<T>(output, 0);
 //   cml::vector<T> *dag_input =
 //     const_cast< cml::vector<T> *>(&info->_dag_input);

@@ -205,8 +205,13 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
 
     // Evaluate Proximal Operators
     cml::blas_axpy(hdl, -kOne, &zt, &z);
+    printf("before prox norm(x) = %e\n", cml::blas_nrm2(hdl, &x));
+    printf("before prox norm(y) = %e\n", cml::blas_nrm2(hdl, &y));
+    printf("rho = %e\n", _rho);
     obj->prox(x.data, y.data, x12.data, y12.data, _rho);
     CUDA_CHECK_ERR();
+    printf("after prox norm(x12) = %e\n", cml::blas_nrm2(hdl, &x12));
+    printf("after prox norm(y12) = %e\n", cml::blas_nrm2(hdl, &y12));
 
     // Compute gap, optval, and tolerances.
     cml::blas_axpy(hdl, -kOne, &z12, &z);
@@ -474,6 +479,13 @@ class PogsObjectiveCone : public PogsObjective<T> {
                     const std::vector<ConeConstraintRaw>& Kx,
                     const std::vector<ConeConstraintRaw>& Ky)
       : b(b), c(c), Kx(Kx), Ky(Ky) {
+    // TODO debug
+    // printf("b[0] = %e\n", b[0]);
+    // printf("c[0] = %e\n", c[0]);
+    // thrust::host_vector<T> tmp_b(this->b);
+    // thrust::host_vector<T> tmp_c(this->c);
+    // printf("tmp_b[0] = %e\n", tmp_b[0]);
+    // printf("tmp_c[0] = %e\n", tmp_c[0]);
     streams_x.resize(Kx.size());
     streams_y.resize(Ky.size());
     for (auto &stream : streams_x) {

@@ -70,7 +70,8 @@ GPU_HDR=\
 	gpu/include/projector_helper.cuh
 GPU_MTX_OBJ=\
 	$(OBJDIR)/gpu/matrix/matrix_dense.o \
-	$(OBJDIR)/gpu/matrix/matrix_sparse.o
+	$(OBJDIR)/gpu/matrix/matrix_sparse.o \
+	$(OBJDIR)/gpu/matrix/matrix_fao.o
 GPU_PRJ_OBJ=\
 	$(OBJDIR)/gpu/projector/projector_cgls.o \
 	$(OBJDIR)/gpu/projector/projector_direct_dense.o

@@ -6,7 +6,7 @@ namespace pogs {
 template <typename T>
 class MatrixFAO : public Matrix<T> {
  private:
-  T *_info;
+  void *_info;
   // gsl::vector<T> _dag_output;
   // gsl::vector<T> _dag_input;
   size_t _m;
