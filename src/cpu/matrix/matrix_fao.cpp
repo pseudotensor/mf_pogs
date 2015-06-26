@@ -7,6 +7,8 @@
 #include <random>
 #include <cstdlib>
 
+#include "FAO_DAG.h"
+
 namespace pogs {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,10 +148,10 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   gsl::vector_set_all<T>(&e_vec, 1.0);
   // Perform randomized Sinkhorn-Knopp equilibration.
   // alpha = n, beta = m, gamma = 0.
-  T alpha = static_cast<T>(this->_n);
-  T beta = static_cast<T>(this->_m);
+  // T alpha = static_cast<T>(this->_n);
+  // T beta = static_cast<T>(this->_m);
   // T gamma = static_cast<T>(0.);
-  gsl::vector<T> rnsATD = gsl::vector_alloc<T>(this->_n);
+  gsl::vector<T> rnsATD = gsl::vector_calloc<T>(this->_n);
   for (size_t i=0; i < this->_equil_steps; ++i) {
     // Set D = alpha*(|A|^2diag(E)^2 + alpha^2*gamma*1)^{-1/2}.
     RandRnsAE(&d_vec, &e_vec);
@@ -172,9 +174,15 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   }
 
   // Scale A to have Frobenius norm of 1.
-  gsl::vector_mul<T>(&rnsATD, &e_vec);
   T normA;
-  gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
+  if (this->_equil_steps == 0) {
+    // RandRnsATD(&rnsATD, &d_vec);
+    // gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
+    normA = 1;
+  } else {
+    gsl::vector_mul<T>(&rnsATD, &e_vec);
+    gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
+  }
   printf("normA = %e\n", normA);
   // Scale d and e to account for normalization of A.
   gsl::vector_scale(&d_vec, 1 / std::sqrt(normA));

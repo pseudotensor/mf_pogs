@@ -237,8 +237,13 @@ int MatrixSparse<T>::Equil(T *d, T *e,
   DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
       gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));
 
-  // delete [] sign;
+  delete [] sign;
 
+  // // TODO trial.
+  // gsl::vector<T> d_vec = gsl::vector_view_array<T>(d, this->_m);
+  // gsl::vector<T> e_vec = gsl::vector_view_array<T>(e, this->_n);
+  // gsl::vector_set_all<T>(&d_vec, 1.0);
+  // gsl::vector_set_all<T>(&e_vec, 1.0);
   return 0;
 }
 
