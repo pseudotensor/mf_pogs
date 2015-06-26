@@ -269,9 +269,9 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
     // Evaluate stopping criteria.
     converged = exact && nrm_r < eps_pri && nrm_s < eps_dua &&
         (!_gap_stop || gap < eps_gap);
-    if (_verbose > 2 && k % 10  == 0 ||
-        _verbose > 1 && k % 100 == 0 ||
-        _verbose > 1 && converged) {
+    if ((_verbose > 2 && k % 10  == 0) ||
+        (_verbose > 1 && k % 100 == 0) ||
+        (_verbose > 1 && converged)) {
       T optval = obj->evaluate(x12.data, y12.data);
       Printf("%5d : %.2e  %.2e  %.2e  %.2e  %.2e  %.2e % .2e\n",
           k, nrm_r, eps_pri, nrm_s, eps_dua, gap, eps_gap, optval);
@@ -479,13 +479,7 @@ class PogsObjectiveCone : public PogsObjective<T> {
                     const std::vector<ConeConstraintRaw>& Kx,
                     const std::vector<ConeConstraintRaw>& Ky)
       : b(b), c(c), Kx(Kx), Ky(Ky) {
-    // TODO debug
-    // printf("b[0] = %e\n", b[0]);
-    // printf("c[0] = %e\n", c[0]);
-    // thrust::host_vector<T> tmp_b(this->b);
-    // thrust::host_vector<T> tmp_c(this->c);
-    // printf("tmp_b[0] = %e\n", tmp_b[0]);
-    // printf("tmp_c[0] = %e\n", tmp_c[0]);
+
     streams_x.resize(Kx.size());
     streams_y.resize(Ky.size());
     for (auto &stream : streams_x) {
@@ -493,6 +487,10 @@ class PogsObjectiveCone : public PogsObjective<T> {
     }
     for (auto &stream : streams_y) {
       cudaStreamCreate(&stream);
+    }
+    for(int i = 0; i < c.size(); i++) {
+      std::cout << "c[" << i << "] = " << this->c[i] << std::endl;
+      std::cout << "b[" << i << "] = " << this->b[i] << std::endl;
     }
   }
 
@@ -511,9 +509,20 @@ class PogsObjectiveCone : public PogsObjective<T> {
   }
 
   void prox(const T *x_in, const T *y_in, T *x_out, T *y_out, T rho) const {
+
+    cublasHandle_t hdl;
+    cublasCreate(&hdl);
+    for(int i = 0; i < c.size(); i++) {
+      std::cout << "c[" << i << "] = " << c[i] << std::endl;
+      std::cout << "b[" << i << "] = " << b[i] << std::endl;
+    }
+
+    auto x_in_vec = cml::vector_view_array<T>(x_in, c.size());
+    auto x_out_vec = cml::vector_view_array<T>(x_out, c.size());
     cudaMemcpy(x_out, x_in, c.size() * sizeof(T), cudaMemcpyDeviceToDevice);
     thrust::transform(c.begin(), c.end(), thrust::device_pointer_cast(x_out),
         thrust::device_pointer_cast(x_out), Updater<T>(rho));
+    printf("norm(x_out) = %e\n", cml::blas_nrm2(hdl, &x_out_vec));
 
     cudaMemcpy(y_out, y_in, b.size() * sizeof(T), cudaMemcpyDeviceToDevice);
     thrust::transform(b.begin(), b.end(), thrust::device_pointer_cast(y_out),
