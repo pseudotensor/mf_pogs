@@ -514,6 +514,9 @@ int Solve(cublasHandle_t handle, const F& A, const INT m, const INT n,
   cudaMalloc(&r, m * sizeof(T));
   cudaMalloc(&s, n * sizeof(T));
   CGLS_CUDA_CHECK_ERR();
+  // Must set q to 0.
+  cudaMemset(q, 0, m * sizeof(T));
+  CGLS_CUDA_CHECK_ERR();
 
   cudaMemcpy(r, b, m * sizeof(T), cudaMemcpyDeviceToDevice);
   cudaMemcpy(s, x, n * sizeof(T), cudaMemcpyDeviceToDevice);

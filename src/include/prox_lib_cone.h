@@ -300,6 +300,8 @@ inline void ProxConeSocGpu(const ConeConstraintRaw& cone_constr, T *v,
     T scale = (static_cast<T>(1) + p / nrm) / 2;
     ApplyGpu(Scale<T>(scale), cone_constr, v, stream);
   }
+  // TODO need this?
+  // cudaStreamSynchronize(stream);
 }
 
 template <typename T>

@@ -208,8 +208,16 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
     // printf("before prox norm(x) = %e\n", cml::blas_nrm2(hdl, &x));
     // printf("before prox norm(y) = %e\n", cml::blas_nrm2(hdl, &y));
     // printf("rho = %e\n", _rho);
+    if (cml::vector_any_isnan(&x))
+      printf("x isnan before prox\n");
+    if (cml::vector_any_isnan(&y))
+      printf("y isnan before prox\n");
     obj->prox(x.data, y.data, x12.data, y12.data, _rho);
     CUDA_CHECK_ERR();
+    if (cml::vector_any_isnan(&x12))
+      printf("x12 isnan after prox\n");
+    if (cml::vector_any_isnan(&y12))
+      printf("y12 isnan after prox\n");
     // printf("after prox norm(x12) = %e\n", cml::blas_nrm2(hdl, &x12));
     // printf("after prox norm(y12) = %e\n", cml::blas_nrm2(hdl, &y12));
 
@@ -229,12 +237,20 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
     cml::blas_axpy(hdl, kOne - kAlpha, &zprev, &ztemp);
     CUDA_CHECK_ERR();
 
+    if (cml::vector_any_isnan(&x))
+      printf("x isnan before project\n");
+    if (cml::vector_any_isnan(&y))
+      printf("y isnan before project\n");
     // Project onto y = Ax.
     T proj_tol = kProjTolMin / std::pow(static_cast<T>(k + 1), kProjTolPow);
     proj_tol = std::max(proj_tol, kProjTolMax);
     _P.Project(xtemp.data, ytemp.data, kOne, x.data, y.data, proj_tol);
     cudaDeviceSynchronize();
     CUDA_CHECK_ERR();
+    if (cml::vector_any_isnan(&x))
+      printf("x isnan after project\n");
+    if (cml::vector_any_isnan(&y))
+      printf("y isnan after project\n");
 
     // Calculate residuals.
     cml::vector_memcpy(&ztemp, &zprev);
