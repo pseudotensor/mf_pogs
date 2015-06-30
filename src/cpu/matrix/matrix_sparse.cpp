@@ -161,90 +161,92 @@ int MatrixSparse<T>::Equil(T *d, T *e,
   if (!this->_done_init)
     return 1;
 
-  // Number of elements in matrix.
-  size_t num_el = static_cast<size_t>(2) * _nnz;
-
-  // Create bit-vector with signs of entries in A and then let A = f(A),
-  // where f = |A| or f = |A|.^2.
-  unsigned char *sign;
-  size_t num_sign_bytes = (num_el + 7) / 8;
-  sign = new unsigned char[num_sign_bytes];
-
-  // Fill sign bits, assigning each thread a multiple of 8 elements.
-  size_t num_chars = num_el / 8;
-  if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-    SetSign(_data, sign, num_chars, SquareF<T>());
-  } else {
-    SetSign(_data, sign, num_chars, AbsF<T>());
-  }
-
-  // If numel(A) is not a multiple of 8, then we need to set the last couple
-  // of sign bits too.
-  if (num_el > num_chars * 8) {
-    if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-      SetSignSingle(_data + num_chars * 8, sign + num_chars,
-          num_el - num_chars * 8, SquareF<T>());
-    } else {
-      SetSignSingle(_data + num_chars * 8, sign + num_chars,
-          num_el - num_chars * 8, AbsF<T>());
-    }
-  }
-
-  // Perform Sinkhorn-Knopp equilibration.
-  SinkhornKnopp(this, d, e, constrain_d, constrain_e);
-
-  // Transform A = sign(A) .* sqrt(A) if 2-norm equilibration was performed,
-  // or A = sign(A) .* A if the 1-norm was equilibrated.
-  if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-    UnSetSign(_data, sign, num_chars, SqrtF<T>());
-  } else {
-    UnSetSign(_data, sign, num_chars, IdentityF<T>());
-  }
-
-  // Deal with last few entries if num_el is not a multiple of 8.
-  if (num_el > num_chars * 8) {
-    if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-      UnSetSignSingle(_data + num_chars * 8, sign + num_chars,
-          num_el - num_chars * 8, SqrtF<T>());
-    } else {
-      UnSetSignSingle(_data + num_chars * 8, sign + num_chars,
-          num_el - num_chars * 8, IdentityF<T>());
-    }
-  }
-
-  // Compute D := sqrt(D), E := sqrt(E), if 2-norm was equilibrated.
-  if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-    std::transform(d, d + this->_m, d, SqrtF<T>());
-    std::transform(e, e + this->_n, e, SqrtF<T>());
-  }
-
-  // Compute A := D * A * E.
-  MultDiag(d, e, this->_m, this->_n, _nnz, _ord, _data, _ind, _ptr);
-
-  // Scale A to have norm of 1 (in the kNormNormalize norm).
-  T normA = NormEst(kNormNormalize, *this);
-  gsl::vector<T> a_vec = gsl::vector_view_array(_data, num_el);
-  gsl::vector_scale(&a_vec, 1 / normA);
-  // Scale d and e to account for normalization of A.
+  // TODO trial.
   gsl::vector<T> d_vec = gsl::vector_view_array<T>(d, this->_m);
   gsl::vector<T> e_vec = gsl::vector_view_array<T>(e, this->_n);
-  gsl::vector_scale(&d_vec, 1 / std::sqrt(normA));
-  gsl::vector_scale(&e_vec, 1 / std::sqrt(normA));
-  printf("normA = %e\n", normA);
-  printf("norm(d) = %e\n", gsl::blas_nrm2(&d_vec));
-  printf("norm(e) = %e\n", gsl::blas_nrm2(&e_vec));
+  gsl::vector_set_all<T>(&d_vec, 1.0);
+  gsl::vector_set_all<T>(&e_vec, 1.0);
+  return 0;
 
-  DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
-      gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));
+  // // Number of elements in matrix.
+  // size_t num_el = static_cast<size_t>(2) * _nnz;
 
-  delete [] sign;
+  // // Create bit-vector with signs of entries in A and then let A = f(A),
+  // // where f = |A| or f = |A|.^2.
+  // unsigned char *sign;
+  // size_t num_sign_bytes = (num_el + 7) / 8;
+  // sign = new unsigned char[num_sign_bytes];
 
-  // // TODO trial.
+  // // Fill sign bits, assigning each thread a multiple of 8 elements.
+  // size_t num_chars = num_el / 8;
+  // if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
+  //   SetSign(_data, sign, num_chars, SquareF<T>());
+  // } else {
+  //   SetSign(_data, sign, num_chars, AbsF<T>());
+  // }
+
+  // // If numel(A) is not a multiple of 8, then we need to set the last couple
+  // // of sign bits too.
+  // if (num_el > num_chars * 8) {
+  //   if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
+  //     SetSignSingle(_data + num_chars * 8, sign + num_chars,
+  //         num_el - num_chars * 8, SquareF<T>());
+  //   } else {
+  //     SetSignSingle(_data + num_chars * 8, sign + num_chars,
+  //         num_el - num_chars * 8, AbsF<T>());
+  //   }
+  // }
+
+  // // Perform Sinkhorn-Knopp equilibration.
+  // SinkhornKnopp(this, d, e, constrain_d, constrain_e);
+
+  // // Transform A = sign(A) .* sqrt(A) if 2-norm equilibration was performed,
+  // // or A = sign(A) .* A if the 1-norm was equilibrated.
+  // if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
+  //   UnSetSign(_data, sign, num_chars, SqrtF<T>());
+  // } else {
+  //   UnSetSign(_data, sign, num_chars, IdentityF<T>());
+  // }
+
+  // // Deal with last few entries if num_el is not a multiple of 8.
+  // if (num_el > num_chars * 8) {
+  //   if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
+  //     UnSetSignSingle(_data + num_chars * 8, sign + num_chars,
+  //         num_el - num_chars * 8, SqrtF<T>());
+  //   } else {
+  //     UnSetSignSingle(_data + num_chars * 8, sign + num_chars,
+  //         num_el - num_chars * 8, IdentityF<T>());
+  //   }
+  // }
+
+  // // Compute D := sqrt(D), E := sqrt(E), if 2-norm was equilibrated.
+  // if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
+  //   std::transform(d, d + this->_m, d, SqrtF<T>());
+  //   std::transform(e, e + this->_n, e, SqrtF<T>());
+  // }
+
+  // // Compute A := D * A * E.
+  // MultDiag(d, e, this->_m, this->_n, _nnz, _ord, _data, _ind, _ptr);
+
+  // // Scale A to have norm of 1 (in the kNormNormalize norm).
+  // T normA = NormEst(kNormNormalize, *this);
+  // gsl::vector<T> a_vec = gsl::vector_view_array(_data, num_el);
+  // gsl::vector_scale(&a_vec, 1 / normA);
+  // // Scale d and e to account for normalization of A.
   // gsl::vector<T> d_vec = gsl::vector_view_array<T>(d, this->_m);
   // gsl::vector<T> e_vec = gsl::vector_view_array<T>(e, this->_n);
-  // gsl::vector_set_all<T>(&d_vec, 1.0);
-  // gsl::vector_set_all<T>(&e_vec, 1.0);
-  return 0;
+  // gsl::vector_scale(&d_vec, 1 / std::sqrt(normA));
+  // gsl::vector_scale(&e_vec, 1 / std::sqrt(normA));
+  // printf("normA = %e\n", normA);
+  // printf("norm(d) = %e\n", gsl::blas_nrm2(&d_vec));
+  // printf("norm(e) = %e\n", gsl::blas_nrm2(&e_vec));
+
+  // DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
+  //     gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));
+
+  // delete [] sign;
+
+  // return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
