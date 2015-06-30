@@ -144,63 +144,64 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   gsl::vector<T> e_vec = gsl::vector_view_array<T>(e, this->_n);
   gsl::vector_set_all<T>(&d_vec, 1.0);
   gsl::vector_set_all<T>(&e_vec, 1.0);
-  // Perform randomized Sinkhorn-Knopp equilibration.
-  // alpha = n, beta = m, gamma = 0.
-  // T alpha = static_cast<T>(this->_n);
-  // T beta = static_cast<T>(this->_m);
-  // T gamma = static_cast<T>(0.);
-  gsl::vector<T> rnsATD = gsl::vector_calloc<T>(this->_n);
-  for (size_t i=0; i < this->_equil_steps; ++i) {
-    // Set D = alpha*(|A|^2diag(E)^2 + alpha^2*gamma*1)^{-1/2}.
-    RandRnsAE(&d_vec, &e_vec);
-    // gsl::vector_add_constant<T>(&d_vec, alpha*alpha*gamma);
-    std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, SqrtF<T>());
-    // Round D's entries to be in [MIN_SCALE, MAX_SCALE].
-    gsl::vector_bound<T>(&d_vec, MIN_SCALE, MAX_SCALE);
-    std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, ReciprF<T>());
-    // gsl::vector_scale<T>(&d_vec, alpha);
-    // Set E = beta*(|A^T|^2diag(D)^2 + gamma*beta^2*1)^{-1/2}.
-    RandRnsATD(&e_vec, &d_vec);
-    // Save the row norms squared of A^TD.
-    gsl::vector_memcpy<T>(&rnsATD, &e_vec);
-    // gsl::vector_add_constant<T>(&e_vec, beta*beta*gamma);
-    std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, SqrtF<T>());
-    // Round E's entries to be in [MIN_SCALE, MAX_SCALE].
-    gsl::vector_bound<T>(&e_vec, MIN_SCALE, MAX_SCALE);
-    std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, ReciprF<T>());
-    // gsl::vector_scale(&e_vec, beta);
-  }
-
-  // Scale A to have Frobenius norm of 1.
-  T normA;
-  if (this->_equil_steps == 0) {
-    // RandRnsATD(&rnsATD, &d_vec);
-    // gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
-    normA = 1;
-  } else {
-    gsl::vector_mul<T>(&rnsATD, &e_vec);
-    gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
-  }
-  printf("normA = %e\n", normA);
-  // Scale d and e to account for normalization of A.
-  gsl::vector_scale(&d_vec, 1 / std::sqrt(normA));
-  gsl::vector_scale(&e_vec, 1 / std::sqrt(normA));
-  printf("norm(d) = %e\n", gsl::blas_nrm2(&d_vec));
-  printf("norm(e) = %e\n", gsl::blas_nrm2(&e_vec));
-
-  // gsl::vector_set_all<T>(&d_vec, 1.0);
-  // gsl::vector_set_all<T>(&e_vec, 1.0);
-  // Save D and E.
-  this->_done_equil = true;
-  this->_d = d_vec;
-  this->_e = e_vec;
-  printf("D[0] = %e\n", this->_d.data[0]);
-  printf("E[0] = %e\n", this->_e.data[0]);
-
-  DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
-      gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));
-
   return 0;
+  // // Perform randomized Sinkhorn-Knopp equilibration.
+  // // alpha = n, beta = m, gamma = 0.
+  // // T alpha = static_cast<T>(this->_n);
+  // // T beta = static_cast<T>(this->_m);
+  // // T gamma = static_cast<T>(0.);
+  // gsl::vector<T> rnsATD = gsl::vector_calloc<T>(this->_n);
+  // for (size_t i=0; i < this->_equil_steps; ++i) {
+  //   // Set D = alpha*(|A|^2diag(E)^2 + alpha^2*gamma*1)^{-1/2}.
+  //   RandRnsAE(&d_vec, &e_vec);
+  //   // gsl::vector_add_constant<T>(&d_vec, alpha*alpha*gamma);
+  //   std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, SqrtF<T>());
+  //   // Round D's entries to be in [MIN_SCALE, MAX_SCALE].
+  //   gsl::vector_bound<T>(&d_vec, MIN_SCALE, MAX_SCALE);
+  //   std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, ReciprF<T>());
+  //   // gsl::vector_scale<T>(&d_vec, alpha);
+  //   // Set E = beta*(|A^T|^2diag(D)^2 + gamma*beta^2*1)^{-1/2}.
+  //   RandRnsATD(&e_vec, &d_vec);
+  //   // Save the row norms squared of A^TD.
+  //   gsl::vector_memcpy<T>(&rnsATD, &e_vec);
+  //   // gsl::vector_add_constant<T>(&e_vec, beta*beta*gamma);
+  //   std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, SqrtF<T>());
+  //   // Round E's entries to be in [MIN_SCALE, MAX_SCALE].
+  //   gsl::vector_bound<T>(&e_vec, MIN_SCALE, MAX_SCALE);
+  //   std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, ReciprF<T>());
+  //   // gsl::vector_scale(&e_vec, beta);
+  // }
+
+  // // Scale A to have Frobenius norm of 1.
+  // T normA;
+  // if (this->_equil_steps == 0) {
+  //   // RandRnsATD(&rnsATD, &d_vec);
+  //   // gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
+  //   normA = 1;
+  // } else {
+  //   gsl::vector_mul<T>(&rnsATD, &e_vec);
+  //   gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
+  // }
+  // printf("normA = %e\n", normA);
+  // // Scale d and e to account for normalization of A.
+  // gsl::vector_scale(&d_vec, 1 / std::sqrt(normA));
+  // gsl::vector_scale(&e_vec, 1 / std::sqrt(normA));
+  // printf("norm(d) = %e\n", gsl::blas_nrm2(&d_vec));
+  // printf("norm(e) = %e\n", gsl::blas_nrm2(&e_vec));
+
+  // // gsl::vector_set_all<T>(&d_vec, 1.0);
+  // // gsl::vector_set_all<T>(&e_vec, 1.0);
+  // // Save D and E.
+  // this->_done_equil = true;
+  // this->_d = d_vec;
+  // this->_e = e_vec;
+  // printf("D[0] = %e\n", this->_d.data[0]);
+  // printf("E[0] = %e\n", this->_e.data[0]);
+
+  // DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
+  //     gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));
+
+  // return 0;
 }
 
 
