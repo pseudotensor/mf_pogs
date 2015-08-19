@@ -17,8 +17,8 @@ namespace pogs {
 namespace {
 
 // File scoped constants.
-const NormTypes kNormEquilibrate = kNorm2; 
-const NormTypes kNormNormalize   = kNormFro; 
+const NormTypes kNormEquilibrate = kNorm2;
+const NormTypes kNormNormalize   = kNormFro;
 
 template <typename T>
 struct GpuData {
@@ -79,7 +79,7 @@ MatrixSparse<T>::MatrixSparse(char ord, POGS_INT m, POGS_INT n, POGS_INT nnz,
 
 template <typename T>
 MatrixSparse<T>::MatrixSparse(const MatrixSparse<T>& A)
-    : Matrix<T>(A._m, A._n), _data(0), _ptr(0), _ind(0), _nnz(A._nnz), 
+    : Matrix<T>(A._m, A._n), _data(0), _ptr(0), _ind(0), _nnz(A._nnz),
       _ord(A._ord) {
 
   GpuData<T> *info_A = reinterpret_cast<GpuData<T>*>(A._info);
@@ -188,119 +188,124 @@ int MatrixSparse<T>::Equil(T *d, T *e,
   if (!this->_done_init)
     return 1;
 
-  // Extract cublas handle from _info.
-  GpuData<T> *info = reinterpret_cast<GpuData<T>*>(this->_info);
-  cublasHandle_t hdl = info->d_hdl;
-
-  // Number of elements in matrix.
-  size_t num_el = static_cast<size_t>(2) * _nnz;
-
-  // Create bit-vector with signs of entries in A and then let A = f(A),
-  // where f = |A| or f = |A|.^2.
-  unsigned char *sign;
-  size_t num_sign_bytes = (num_el + 7) / 8;
-  cudaMalloc(&sign, num_sign_bytes);
-  CUDA_CHECK_ERR();
-
-  // Fill sign bits, assigning each thread a multiple of 8 elements.
-  size_t num_chars = num_el / 8;
-  size_t block_size = std::min(cml::kBlockSize, num_chars);
-  size_t grid_size = cml::calc_grid_dim(num_chars, block_size);
-  if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-    __SetSign<<<grid_size, block_size>>>(_data, sign, num_chars,
-        SquareF<T>());
-  } else {
-    __SetSign<<<grid_size, block_size>>>(_data, sign, num_chars,
-        AbsF<T>());
-  }
-  cudaDeviceSynchronize();
-  CUDA_CHECK_ERR();
-
-  // If numel(A) is not a multiple of 8, then we need to set the last couple
-  // of sign bits too.
-  if (num_el > num_chars * 8) {
-    if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-      __SetSignSingle<<<1, 1>>>(_data + num_chars * 8, sign + num_chars, 
-          num_el - num_chars * 8, SquareF<T>());
-    } else {
-      __SetSignSingle<<<1, 1>>>(_data + num_chars * 8, sign + num_chars, 
-          num_el - num_chars * 8, AbsF<T>());
-    }
-    cudaDeviceSynchronize();
-    CUDA_CHECK_ERR();
-  }
-
-  // Perform Sinkhorn-Knopp equilibration.
-  SinkhornKnopp(this, d, e, constrain_d, constrain_e);
-  cudaDeviceSynchronize();
-
-  // Transform A = sign(A) .* sqrt(A) if 2-norm equilibration was performed,
-  // or A = sign(A) .* A if the 1-norm was equilibrated.
-  if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-    __UnSetSign<<<grid_size, block_size>>>(_data, sign, num_chars,
-        SqrtF<T>());
-  } else {
-    __UnSetSign<<<grid_size, block_size>>>(_data, sign, num_chars,
-        IdentityF<T>());
-  }
-  cudaDeviceSynchronize();
-  CUDA_CHECK_ERR();
-
-  // Deal with last few entries if num_el is not a multiple of 8.
-  if (num_el > num_chars * 8) {
-    if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-      __UnSetSignSingle<<<1, 1>>>(_data + num_chars * 8, sign + num_chars, 
-          num_el - num_chars * 8, SqrtF<T>());
-    } else {
-      __UnSetSignSingle<<<1, 1>>>(_data + num_chars * 8, sign + num_chars, 
-          num_el - num_chars * 8, IdentityF<T>());
-    }
-    cudaDeviceSynchronize();
-    CUDA_CHECK_ERR();
-  }
-
-  // Compute D := sqrt(D), E := sqrt(E), if 2-norm was equilibrated.
-  if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
-    thrust::transform(thrust::device_pointer_cast(d),
-        thrust::device_pointer_cast(d + this->_m),
-        thrust::device_pointer_cast(d), SqrtF<T>());
-    thrust::transform(thrust::device_pointer_cast(e),
-        thrust::device_pointer_cast(e + this->_n),
-        thrust::device_pointer_cast(e), SqrtF<T>());
-    cudaDeviceSynchronize();
-    CUDA_CHECK_ERR();
-  }
-
-  // Compute A := D * A * E.
-  MultDiag(d, e, this->_m, this->_n, _nnz, _ord, _data, _ind, _ptr);
-  cudaDeviceSynchronize();
-  CUDA_CHECK_ERR();
-
-  // Scale A to have norm of 1 (in the kNormNormalize norm).
-  T normA = NormEst(hdl, kNormNormalize, *this);
-  CUDA_CHECK_ERR();
-  cudaDeviceSynchronize();
-  cml::vector<T> a_vec = cml::vector_view_array(_data, num_el);
-  cml::vector_scale(&a_vec, 1 / normA);
-  cudaDeviceSynchronize();
-
-  // Scale d and e to account for normalization of A.
   cml::vector<T> d_vec = cml::vector_view_array<T>(d, this->_m);
   cml::vector<T> e_vec = cml::vector_view_array<T>(e, this->_n);
-  T normd = cml::blas_nrm2(hdl, &d_vec);
-  T norme = cml::blas_nrm2(hdl, &e_vec);
-//  T scale = sqrt(normd * sqrt(this->_n) / (norme * sqrt(this->_m)));
-  T scale = static_cast<T>(1.);
-  cml::vector_scale(&d_vec, 1 / (scale * sqrt(normA)));
-  cml::vector_scale(&e_vec, scale / sqrt(normA));
-  cudaDeviceSynchronize();
-
-  cudaFree(sign);
-  CUDA_CHECK_ERR();
-
-  DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA, normd, norme);
-
+  cml::vector_set_all<T>(&d_vec, 1.0);
+  cml::vector_set_all<T>(&e_vec, 1.0);
   return 0;
+//   // Extract cublas handle from _info.
+//   GpuData<T> *info = reinterpret_cast<GpuData<T>*>(this->_info);
+//   cublasHandle_t hdl = info->d_hdl;
+
+//   // Number of elements in matrix.
+//   size_t num_el = static_cast<size_t>(2) * _nnz;
+
+//   // Create bit-vector with signs of entries in A and then let A = f(A),
+//   // where f = |A| or f = |A|.^2.
+//   unsigned char *sign;
+//   size_t num_sign_bytes = (num_el + 7) / 8;
+//   cudaMalloc(&sign, num_sign_bytes);
+//   CUDA_CHECK_ERR();
+
+//   // Fill sign bits, assigning each thread a multiple of 8 elements.
+//   size_t num_chars = num_el / 8;
+//   size_t block_size = std::min(cml::kBlockSize, num_chars);
+//   size_t grid_size = cml::calc_grid_dim(num_chars, block_size);
+//   if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
+//     __SetSign<<<grid_size, block_size>>>(_data, sign, num_chars,
+//         SquareF<T>());
+//   } else {
+//     __SetSign<<<grid_size, block_size>>>(_data, sign, num_chars,
+//         AbsF<T>());
+//   }
+//   cudaDeviceSynchronize();
+//   CUDA_CHECK_ERR();
+
+//   // If numel(A) is not a multiple of 8, then we need to set the last couple
+//   // of sign bits too.
+//   if (num_el > num_chars * 8) {
+//     if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
+//       __SetSignSingle<<<1, 1>>>(_data + num_chars * 8, sign + num_chars,
+//           num_el - num_chars * 8, SquareF<T>());
+//     } else {
+//       __SetSignSingle<<<1, 1>>>(_data + num_chars * 8, sign + num_chars,
+//           num_el - num_chars * 8, AbsF<T>());
+//     }
+//     cudaDeviceSynchronize();
+//     CUDA_CHECK_ERR();
+//   }
+
+//   // Perform Sinkhorn-Knopp equilibration.
+//   SinkhornKnopp(this, d, e, constrain_d, constrain_e);
+//   cudaDeviceSynchronize();
+
+//   // Transform A = sign(A) .* sqrt(A) if 2-norm equilibration was performed,
+//   // or A = sign(A) .* A if the 1-norm was equilibrated.
+//   if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
+//     __UnSetSign<<<grid_size, block_size>>>(_data, sign, num_chars,
+//         SqrtF<T>());
+//   } else {
+//     __UnSetSign<<<grid_size, block_size>>>(_data, sign, num_chars,
+//         IdentityF<T>());
+//   }
+//   cudaDeviceSynchronize();
+//   CUDA_CHECK_ERR();
+
+//   // Deal with last few entries if num_el is not a multiple of 8.
+//   if (num_el > num_chars * 8) {
+//     if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
+//       __UnSetSignSingle<<<1, 1>>>(_data + num_chars * 8, sign + num_chars,
+//           num_el - num_chars * 8, SqrtF<T>());
+//     } else {
+//       __UnSetSignSingle<<<1, 1>>>(_data + num_chars * 8, sign + num_chars,
+//           num_el - num_chars * 8, IdentityF<T>());
+//     }
+//     cudaDeviceSynchronize();
+//     CUDA_CHECK_ERR();
+//   }
+
+//   // Compute D := sqrt(D), E := sqrt(E), if 2-norm was equilibrated.
+//   if (kNormEquilibrate == kNorm2 || kNormEquilibrate == kNormFro) {
+//     thrust::transform(thrust::device_pointer_cast(d),
+//         thrust::device_pointer_cast(d + this->_m),
+//         thrust::device_pointer_cast(d), SqrtF<T>());
+//     thrust::transform(thrust::device_pointer_cast(e),
+//         thrust::device_pointer_cast(e + this->_n),
+//         thrust::device_pointer_cast(e), SqrtF<T>());
+//     cudaDeviceSynchronize();
+//     CUDA_CHECK_ERR();
+//   }
+
+//   // Compute A := D * A * E.
+//   MultDiag(d, e, this->_m, this->_n, _nnz, _ord, _data, _ind, _ptr);
+//   cudaDeviceSynchronize();
+//   CUDA_CHECK_ERR();
+
+//   // Scale A to have norm of 1 (in the kNormNormalize norm).
+//   T normA = NormEst(hdl, kNormNormalize, *this);
+//   CUDA_CHECK_ERR();
+//   cudaDeviceSynchronize();
+//   cml::vector<T> a_vec = cml::vector_view_array(_data, num_el);
+//   cml::vector_scale(&a_vec, 1 / normA);
+//   cudaDeviceSynchronize();
+
+//   // Scale d and e to account for normalization of A.
+//   cml::vector<T> d_vec = cml::vector_view_array<T>(d, this->_m);
+//   cml::vector<T> e_vec = cml::vector_view_array<T>(e, this->_n);
+//   T normd = cml::blas_nrm2(hdl, &d_vec);
+//   T norme = cml::blas_nrm2(hdl, &e_vec);
+// //  T scale = sqrt(normd * sqrt(this->_n) / (norme * sqrt(this->_m)));
+//   T scale = static_cast<T>(1.);
+//   cml::vector_scale(&d_vec, 1 / (scale * sqrt(normA)));
+//   cml::vector_scale(&e_vec, scale / sqrt(normA));
+//   cudaDeviceSynchronize();
+
+//   cudaFree(sign);
+//   CUDA_CHECK_ERR();
+
+//   DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA, normd, norme);
+
+//   return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
