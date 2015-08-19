@@ -218,18 +218,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
 
     // Evaluate Proximal Operators
     cml::blas_axpy(hdl, -kOne, &zt, &z);
-<<<<<<< HEAD
-    // printf("before prox norm(x) = %e\n", cml::blas_nrm2(hdl, &x));
-    // printf("before prox norm(y) = %e\n", cml::blas_nrm2(hdl, &y));
-    // printf("rho = %e\n", _rho);
-    if (cml::vector_any_isnan(&x))
-      printf("x isnan before prox\n");
-    if (cml::vector_any_isnan(&y))
-      printf("y isnan before prox\n");
-    obj->prox(x.data, y.data, x12.data, y12.data, _rho);
-=======
     objective->prox(x.data, y.data, x12.data, y12.data, _rho);
->>>>>>> 289661fb48bd56541d59125802296d2b7b001656
     CUDA_CHECK_ERR();
     if (cml::vector_any_isnan(&x12))
       printf("x12 isnan after prox\n");
@@ -301,17 +290,10 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     // Evaluate stopping criteria.
     converged = exact && nrm_r < eps_pri && nrm_s < eps_dua &&
         (!_gap_stop || gap < eps_gap);
-<<<<<<< HEAD
-    if ((_verbose > 2 && k % 10  == 0) ||
-        (_verbose > 1 && k % 100 == 0) ||
-        (_verbose > 1 && converged)) {
-      T optval = obj->evaluate(x12.data, y12.data);
-=======
     if (_verbose > 2 && k % 10  == 0 ||
         _verbose > 1 && k % 100 == 0 ||
         _verbose > 1 && converged) {
       T optval = objective->evaluate(x12.data, y12.data);
->>>>>>> 289661fb48bd56541d59125802296d2b7b001656
       Printf("%5d : %.2e  %.2e  %.2e  %.2e  %.2e  %.2e % .2e\n",
           k, nrm_r, eps_pri, nrm_s, eps_dua, gap, eps_gap, optval);
     }
