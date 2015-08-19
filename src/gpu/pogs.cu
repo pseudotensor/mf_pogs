@@ -8,6 +8,7 @@
 
 #include "cml/cml_blas.cuh"
 #include "cml/cml_vector.cuh"
+#include "equil_helper.cuh"
 #include "interface_defs.h"
 #include "matrix/matrix.h"
 #include "matrix/matrix_dense.h"
@@ -47,7 +48,7 @@ PogsImplementation<T, M, P>::PogsImplementation(const M &A)
 }
 
 template <typename T, typename M, typename P>
-int PogsImplementation<T, M, P>::_Init(const PogsObjective<T> *obj) {
+int PogsImplementation<T, M, P>::_Init(const PogsObjective<T> *objective) {
   DEBUG_EXPECT(!_done_init);
   if (_done_init)
     return 1;
@@ -64,38 +65,50 @@ int PogsImplementation<T, M, P>::_Init(const PogsObjective<T> *obj) {
   cudaMemset(_zt, 0, (m + n) * sizeof(T));
   CUDA_CHECK_ERR();
 
+  cublasHandle_t hdl;
+  cublasCreate(&hdl);
+  CUDA_CHECK_ERR();
+
   _A.Init();
   _A.Equil(_de, _de + m,
-           std::function<void(T*)>([obj](T *v){ obj->constrain_d(v); }),
-           std::function<void(T*)>([obj](T *v){ obj->constrain_e(v); }));
+           std::function<void(T*)>([objective](T *v){
+               objective->constrain_d(v);
+           }),
+           std::function<void(T*)>([objective](T *v){
+               objective->constrain_e(v);
+           }));
+  _nrmA = Norm2Est(hdl, &_A);
+  CUDA_CHECK_ERR();
+
   _P.Init();
   CUDA_CHECK_ERR();
 
+  cublasDestroy(hdl);
   return 0;
 }
 
 template <typename T, typename M, typename P>
-PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
+PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
   double t0 = timer<double>();
   // Constants for adaptive-rho and over-relaxation.
-  const T kDeltaMin   = static_cast<T>(1.05);
-  const T kGamma      = static_cast<T>(1.01);
-  const T kTau        = static_cast<T>(0.8);
-  const T kAlpha      = static_cast<T>(1.7);
-  const T kRhoMin     = static_cast<T>(1e-4);
-  const T kRhoMax     = static_cast<T>(1e4);
-  const T kKappa      = static_cast<T>(0.4);
-  const T kOne        = static_cast<T>(1.0);
-  const T kZero       = static_cast<T>(0.0);
-  const T kProjTolMax = static_cast<T>(1e-8);
-  const T kProjTolMin = static_cast<T>(1e-2);
-  const T kProjTolPow = static_cast<T>(1.3);
-  const T kProjTolIni = static_cast<T>(1e-5);
-  bool use_exact_stop = true;
+  const T kDeltaMin       = static_cast<T>(1.05);
+  const T kGamma          = static_cast<T>(1.01);
+  const T kTau            = static_cast<T>(0.8);
+  const T kAlpha          = static_cast<T>(1.7);
+  const T kRhoMin         = static_cast<T>(1e-4);
+  const T kRhoMax         = static_cast<T>(1e4);
+  const T kKappa          = static_cast<T>(0.9);
+  const T kOne            = static_cast<T>(1);
+  const T kZero           = static_cast<T>(0);
+  const T kProjTolMax     = static_cast<T>(1e-8);
+  const T kProjTolMin     = static_cast<T>(1e-2);
+  const T kProjTolPow     = static_cast<T>(2);
+  const T kProjTolIni     = static_cast<T>(1e-5);
+  const bool kUseExactTol = false;
 
   // Initialize Projector P and Matrix A.
   if (!_done_init)
-    _Init(obj);
+    _Init(objective);
 
   // Extract values from pogs_data
   size_t m = _A.Rows();
@@ -129,7 +142,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
   CUDA_CHECK_ERR();
 
   // Scale objective to account for diagonal scaling e and d.
-  obj->scale(d.data, e.data);
+  objective->scale(d.data, e.data);
   CUDA_CHECK_ERR();
 
   // Initialize (x, lambda) from (x0, lambda0).
@@ -205,6 +218,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
 
     // Evaluate Proximal Operators
     cml::blas_axpy(hdl, -kOne, &zt, &z);
+<<<<<<< HEAD
     // printf("before prox norm(x) = %e\n", cml::blas_nrm2(hdl, &x));
     // printf("before prox norm(y) = %e\n", cml::blas_nrm2(hdl, &y));
     // printf("rho = %e\n", _rho);
@@ -213,6 +227,9 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
     if (cml::vector_any_isnan(&y))
       printf("y isnan before prox\n");
     obj->prox(x.data, y.data, x12.data, y12.data, _rho);
+=======
+    objective->prox(x.data, y.data, x12.data, y12.data, _rho);
+>>>>>>> 289661fb48bd56541d59125802296d2b7b001656
     CUDA_CHECK_ERR();
     if (cml::vector_any_isnan(&x12))
       printf("x12 isnan after prox\n");
@@ -256,39 +273,45 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
     cml::vector_memcpy(&ztemp, &zprev);
     cml::blas_axpy(hdl, -kOne, &z, &ztemp);
     cudaDeviceSynchronize();
-    nrm_s = _rho * cml::blas_nrm2(hdl, &ztemp);
+    nrm_s = _rho * (_nrmA * cml::blas_nrm2(hdl, &ytemp) +
+        cml::blas_nrm2(hdl, &xtemp));
 
     cml::vector_memcpy(&ztemp, &z12);
     cml::blas_axpy(hdl, -kOne, &z, &ztemp);
     cudaDeviceSynchronize();
-    nrm_r = cml::blas_nrm2(hdl, &ztemp);
+    nrm_r = _nrmA * cml::blas_nrm2(hdl, &xtemp) + cml::blas_nrm2(hdl, &ytemp);
 
     // Calculate exact residuals only if necessary.
     bool exact = false;
-    if ((nrm_r < eps_pri && nrm_s < eps_dua) || use_exact_stop) {
+    if ((nrm_r < 10 * eps_pri && nrm_s < 10 * eps_dua) || kUseExactTol) {
       cml::vector_memcpy(&ztemp, &z12);
       _A.Mul('n', kOne, x12.data, -kOne, ytemp.data);
       cudaDeviceSynchronize();
       nrm_r = cml::blas_nrm2(hdl, &ytemp);
-      if ((nrm_r < eps_pri) || use_exact_stop) {
-        cml::vector_memcpy(&ztemp, &z12);
-        cml::blas_axpy(hdl, kOne, &zt, &ztemp);
-        cml::blas_axpy(hdl, -kOne, &zprev, &ztemp);
-        _A.Mul('t', kOne, ytemp.data, kOne, xtemp.data);
-        cudaDeviceSynchronize();
-        nrm_s = _rho * cml::blas_nrm2(hdl, &xtemp);
-        exact = true;
-      }
+      cml::vector_memcpy(&ztemp, &z12);
+      cml::blas_axpy(hdl, kOne, &zt, &ztemp);
+      cml::blas_axpy(hdl, -kOne, &zprev, &ztemp);
+      _A.Mul('t', kOne, ytemp.data, kOne, xtemp.data);
+      cudaDeviceSynchronize();
+      nrm_s = _rho * cml::blas_nrm2(hdl, &xtemp);
+      exact = true;
     }
     CUDA_CHECK_ERR();
 
     // Evaluate stopping criteria.
     converged = exact && nrm_r < eps_pri && nrm_s < eps_dua &&
         (!_gap_stop || gap < eps_gap);
+<<<<<<< HEAD
     if ((_verbose > 2 && k % 10  == 0) ||
         (_verbose > 1 && k % 100 == 0) ||
         (_verbose > 1 && converged)) {
       T optval = obj->evaluate(x12.data, y12.data);
+=======
+    if (_verbose > 2 && k % 10  == 0 ||
+        _verbose > 1 && k % 100 == 0 ||
+        _verbose > 1 && converged) {
+      T optval = objective->evaluate(x12.data, y12.data);
+>>>>>>> 289661fb48bd56541d59125802296d2b7b001656
       Printf("%5d : %.2e  %.2e  %.2e  %.2e  %.2e  %.2e % .2e\n",
           k, nrm_r, eps_pri, nrm_s, eps_dua, gap, eps_gap, optval);
     }
@@ -337,7 +360,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *obj) {
   }
 
   // Get optimal value
-  _optval = obj->evaluate(x12.data, y12.data);
+  _optval = objective->evaluate(x12.data, y12.data);
 
   // Check status
   PogsStatus status;
@@ -476,6 +499,13 @@ PogsStatus PogsSeparable<T, M, P>::Solve(const std::vector<FunctionObj<T>>& f,
 namespace {
 
 template <typename T>
+struct Square : thrust::unary_function<T, T> {
+  inline __host__ __device__ T operator()(const T &x) const {
+    return x * x;
+  }
+};
+
+template <typename T>
 struct Updater {
   T rho;
   Updater(T rho) : rho(rho) { }
@@ -485,6 +515,7 @@ struct Updater {
 template <typename T>
 class PogsObjectiveCone : public PogsObjective<T> {
  private:
+  T c_scale;
   thrust::device_vector<T> b, c;
   const std::vector<ConeConstraintRaw> &Kx, &Ky;
   std::vector<cudaStream_t> streams_x, streams_y;
@@ -517,7 +548,7 @@ class PogsObjectiveCone : public PogsObjective<T> {
 
   T evaluate(const T *x, const T*) const {
     return thrust::inner_product(c.begin(), c.end(),
-        thrust::device_pointer_cast(x), static_cast<T>(0));
+        thrust::device_pointer_cast(x), static_cast<T>(0)) / c_scale;
   }
 
   void prox(const T *x_in, const T *y_in, T *x_out, T *y_out, T rho) const {
@@ -549,6 +580,13 @@ class PogsObjectiveCone : public PogsObjective<T> {
         c.begin(), thrust::multiplies<T>());
     thrust::transform(b.begin(), b.end(), thrust::device_pointer_cast(d),
         b.begin(), thrust::multiplies<T>());
+
+    c_scale = 1 / std::sqrt(thrust::transform_reduce(c.begin(), c.end(),
+        Square<T>(), static_cast<T>(0), thrust::plus<T>()));
+
+    thrust::transform(c.begin(), c.end(),
+        thrust::constant_iterator<T>(c_scale), c.begin(),
+        thrust::multiplies<T>());
   }
 
   // Average the e_i in Kx
