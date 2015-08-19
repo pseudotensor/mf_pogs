@@ -33,6 +33,23 @@ const float MAX_SCALE = 1e3;
 //   return trans == 'n' || trans == 'N' ? CblasNoTrans : CblasTrans;
 // }
 
+template<typename T>
+struct CpuData {
+  gsl::vector<T> _dag_output, _dag_input;
+  gsl::vector<T> _d, _e;
+  cublasHandle_t hdl;
+  CpuData() {
+    cublasCreate(&hdl);
+    CUDA_CHECK_ERR();
+  }
+  ~CpuData() {
+    // TODO get this to work.
+    // cublasDestroy(hdl);
+    CUDA_CHECK_ERR();
+  }
+};
+
+
 template <typename T>
 void AddOrCopy(gsl::vector<T> *y, const gsl::vector<T> *x, bool clear);
 
@@ -50,8 +67,10 @@ MatrixFAO<T>::MatrixFAO(T *dag_output, size_t m, T *dag_input, size_t n,
                         void *dag, size_t samples,
                         size_t equil_steps) :  Matrix<T>(m, n),
                         _samples(samples), _equil_steps(equil_steps) {
-  this->_dag_output = gsl::vector_view_array<T>(dag_output, m);
-  this->_dag_input = gsl::vector_view_array<T>(dag_input, n);
+  CpuData<T> *info = new CpuData<T>();
+
+  info->_dag_output = gsl::vector_view_array<T>(dag_output, m);
+  info->_dag_input = gsl::vector_view_array<T>(dag_input, n);
   this->_Amul = Amul;
   this->_ATmul = ATmul;
   this->_dag = dag;
@@ -84,6 +103,8 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
   DEBUG_ASSERT(this->_done_init);
   if (!this->_done_init)
     return 1;
+
+  CpuData<T> *info = reinterpret_cast<CpuData<T>*>(this->_info);
   // for (size_t i = 0; i < this->_m; ++i) {
   //   printf("D[%zu] = %e\n", i, this->_d.data[i]);
   // }
@@ -91,9 +112,9 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
   //   printf("E[%zu] = %e\n", i, this->_e.data[i]);
   // }
   gsl::vector<T> *dag_input =
-    const_cast< gsl::vector<T> *>(&this->_dag_input);
+    const_cast< gsl::vector<T> *>(&info->_dag_input);
   gsl::vector<T> *dag_output =
-    const_cast< gsl::vector<T> *>(&this->_dag_output);
+    const_cast< gsl::vector<T> *>(&info->_dag_output);
   gsl::vector<T> x_vec, y_vec;
   // TODO factor out common code.
   if (trans == 'n' || trans == 'N') {
@@ -102,13 +123,13 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     gsl::vector_memcpy<T>(dag_input, &x_vec);
     // Multiply by E.
     if (this->_done_equil) {
-      gsl::vector_mul<T>(dag_input, &(this->_e));
+      gsl::vector_mul<T>(dag_input, &(info->_e));
     }
     this->_Amul(this->_dag);
     gsl::vector_scale<T>(dag_output, alpha);
     // Multiply by D.
     if (this->_done_equil) {
-      gsl::vector_mul<T>(dag_output, &(this->_d));
+      gsl::vector_mul<T>(dag_output, &(info->_d));
     }
     gsl::vector_scale(&y_vec, beta);
     gsl::vector_add<T>(&y_vec, dag_output);
@@ -118,13 +139,13 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     gsl::vector_memcpy<T>(dag_output, &x_vec);
     // Multiply by D.
     if (this->_done_equil) {
-      gsl::vector_mul<T>(dag_output, &(this->_d));
+      gsl::vector_mul<T>(dag_output, &(info->_d));
     }
     this->_ATmul(this->_dag);
     gsl::vector_scale<T>(dag_input, alpha);
     // Multiply by E.
     if (this->_done_equil) {
-      gsl::vector_mul<T>(dag_input, &(this->_e));
+      gsl::vector_mul<T>(dag_input, &(info->_e));
     }
     gsl::vector_scale<T>(&y_vec, beta);
     gsl::vector_add<T>(&y_vec, dag_input);
@@ -144,63 +165,64 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   gsl::vector<T> e_vec = gsl::vector_view_array<T>(e, this->_n);
   gsl::vector_set_all<T>(&d_vec, 1.0);
   gsl::vector_set_all<T>(&e_vec, 1.0);
-  // Perform randomized Sinkhorn-Knopp equilibration.
-  // alpha = n, beta = m, gamma = 0.
-  // T alpha = static_cast<T>(this->_n);
-  // T beta = static_cast<T>(this->_m);
-  // T gamma = static_cast<T>(0.);
-  gsl::vector<T> rnsATD = gsl::vector_calloc<T>(this->_n);
-  for (size_t i=0; i < this->_equil_steps; ++i) {
-    // Set D = alpha*(|A|^2diag(E)^2 + alpha^2*gamma*1)^{-1/2}.
-    RandRnsAE(&d_vec, &e_vec);
-    // gsl::vector_add_constant<T>(&d_vec, alpha*alpha*gamma);
-    std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, SqrtF<T>());
-    // Round D's entries to be in [MIN_SCALE, MAX_SCALE].
-    gsl::vector_bound<T>(&d_vec, MIN_SCALE, MAX_SCALE);
-    std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, ReciprF<T>());
-    // gsl::vector_scale<T>(&d_vec, alpha);
-    // Set E = beta*(|A^T|^2diag(D)^2 + gamma*beta^2*1)^{-1/2}.
-    RandRnsATD(&e_vec, &d_vec);
-    // Save the row norms squared of A^TD.
-    gsl::vector_memcpy<T>(&rnsATD, &e_vec);
-    // gsl::vector_add_constant<T>(&e_vec, beta*beta*gamma);
-    std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, SqrtF<T>());
-    // Round E's entries to be in [MIN_SCALE, MAX_SCALE].
-    gsl::vector_bound<T>(&e_vec, MIN_SCALE, MAX_SCALE);
-    std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, ReciprF<T>());
-    // gsl::vector_scale(&e_vec, beta);
-  }
-
-  // Scale A to have Frobenius norm of 1.
-  T normA;
-  if (this->_equil_steps == 0) {
-    // RandRnsATD(&rnsATD, &d_vec);
-    // gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
-    normA = 1;
-  } else {
-    gsl::vector_mul<T>(&rnsATD, &e_vec);
-    gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
-  }
-  printf("normA = %e\n", normA);
-  // Scale d and e to account for normalization of A.
-  gsl::vector_scale(&d_vec, 1 / std::sqrt(normA));
-  gsl::vector_scale(&e_vec, 1 / std::sqrt(normA));
-  printf("norm(d) = %e\n", gsl::blas_nrm2(&d_vec));
-  printf("norm(e) = %e\n", gsl::blas_nrm2(&e_vec));
-
-  // gsl::vector_set_all<T>(&d_vec, 1.0);
-  // gsl::vector_set_all<T>(&e_vec, 1.0);
-  // Save D and E.
-  this->_done_equil = true;
-  this->_d = d_vec;
-  this->_e = e_vec;
-  printf("D[0] = %e\n", this->_d.data[0]);
-  printf("E[0] = %e\n", this->_e.data[0]);
-
-  DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
-      gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));
-
   return 0;
+  // // Perform randomized Sinkhorn-Knopp equilibration.
+  // // alpha = n, beta = m, gamma = 0.
+  // // T alpha = static_cast<T>(this->_n);
+  // // T beta = static_cast<T>(this->_m);
+  // // T gamma = static_cast<T>(0.);
+  // gsl::vector<T> rnsATD = gsl::vector_calloc<T>(this->_n);
+  // for (size_t i=0; i < this->_equil_steps; ++i) {
+  //   // Set D = alpha*(|A|^2diag(E)^2 + alpha^2*gamma*1)^{-1/2}.
+  //   RandRnsAE(&d_vec, &e_vec);
+  //   // gsl::vector_add_constant<T>(&d_vec, alpha*alpha*gamma);
+  //   std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, SqrtF<T>());
+  //   // Round D's entries to be in [MIN_SCALE, MAX_SCALE].
+  //   gsl::vector_bound<T>(&d_vec, MIN_SCALE, MAX_SCALE);
+  //   std::transform(d_vec.data, d_vec.data + this->_m, d_vec.data, ReciprF<T>());
+  //   // gsl::vector_scale<T>(&d_vec, alpha);
+  //   // Set E = beta*(|A^T|^2diag(D)^2 + gamma*beta^2*1)^{-1/2}.
+  //   RandRnsATD(&e_vec, &d_vec);
+  //   // Save the row norms squared of A^TD.
+  //   gsl::vector_memcpy<T>(&rnsATD, &e_vec);
+  //   // gsl::vector_add_constant<T>(&e_vec, beta*beta*gamma);
+  //   std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, SqrtF<T>());
+  //   // Round E's entries to be in [MIN_SCALE, MAX_SCALE].
+  //   gsl::vector_bound<T>(&e_vec, MIN_SCALE, MAX_SCALE);
+  //   std::transform(e_vec.data, e_vec.data + this->_n, e_vec.data, ReciprF<T>());
+  //   // gsl::vector_scale(&e_vec, beta);
+  // }
+
+  // // Scale A to have Frobenius norm of 1.
+  // T normA;
+  // if (this->_equil_steps == 0) {
+  //   // RandRnsATD(&rnsATD, &d_vec);
+  //   // gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
+  //   normA = 1;
+  // } else {
+  //   gsl::vector_mul<T>(&rnsATD, &e_vec);
+  //   gsl::blas_dot<T>(&rnsATD, &e_vec, &normA);
+  // }
+  // printf("normA = %e\n", normA);
+  // // Scale d and e to account for normalization of A.
+  // gsl::vector_scale(&d_vec, 1 / std::sqrt(normA));
+  // gsl::vector_scale(&e_vec, 1 / std::sqrt(normA));
+  // printf("norm(d) = %e\n", gsl::blas_nrm2(&d_vec));
+  // printf("norm(e) = %e\n", gsl::blas_nrm2(&e_vec));
+
+  // // gsl::vector_set_all<T>(&d_vec, 1.0);
+  // // gsl::vector_set_all<T>(&e_vec, 1.0);
+  // // Save D and E.
+  // this->_done_equil = true;
+  // this->_d = d_vec;
+  // this->_e = e_vec;
+  // printf("D[0] = %e\n", this->_d.data[0]);
+  // printf("E[0] = %e\n", this->_e.data[0]);
+
+  // DEBUG_PRINTF("norm A = %e, normd = %e, norme = %e\n", normA,
+  //     gsl::blas_nrm2(&d_vec), gsl::blas_nrm2(&e_vec));
+
+  // return 0;
 }
 
 
