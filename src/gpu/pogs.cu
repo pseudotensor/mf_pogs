@@ -105,6 +105,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
   const T kProjTolPow     = static_cast<T>(2);
   const T kProjTolIni     = static_cast<T>(1e-5);
   const bool kUseExactTol = false;
+  int mul_count = 0;
 
   // Initialize Projector P and Matrix A.
   if (!_done_init)
@@ -150,6 +151,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     cml::vector_memcpy(&xtemp, _x);
     cml::vector_div(&xtemp, &e);
     _A.Mul('n', kOne, xtemp.data, kZero, ytemp.data);
+    mul_count++;
     cudaDeviceSynchronize();
     cml::vector_memcpy(&z, &ztemp);
     CUDA_CHECK_ERR();
@@ -158,6 +160,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     cml::vector_memcpy(&ytemp, _lambda);
     cml::vector_div(&ytemp, &d);
     _A.Mul('t', -kOne, ytemp.data, kZero, xtemp.data);
+    mul_count++;
     cudaDeviceSynchronize();
     cml::blas_scal(hdl, -kOne / _rho, &ztemp);
     cml::vector_memcpy(&zt, &ztemp);
@@ -174,7 +177,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
 //      ProjSubgradEval(g_gpu, xprev.data, x.data, xtemp.data);
 //      ProjSubgradEval(f_gpu, yprev.data, y.data, ytemp.data);
       _P.Project(xtemp.data, ytemp.data, kOne, xprev.data, yprev.data,
-          kProjTolIni);
+          kProjTolIni, mul_count);
       cudaDeviceSynchronize();
       CUDA_CHECK_ERR();
       cml::blas_axpy(hdl, -kOne, &ztemp, &zprev);
@@ -220,10 +223,10 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     cml::blas_axpy(hdl, -kOne, &zt, &z);
     objective->prox(x.data, y.data, x12.data, y12.data, _rho);
     CUDA_CHECK_ERR();
-    if (cml::vector_any_isnan(&x12))
-      printf("x12 isnan after prox\n");
-    if (cml::vector_any_isnan(&y12))
-      printf("y12 isnan after prox\n");
+    // if (cml::vector_any_isnan(&x12))
+    //   printf("x12 isnan after prox\n");
+    // if (cml::vector_any_isnan(&y12))
+    //   printf("y12 isnan after prox\n");
     // printf("after prox norm(x12) = %e\n", cml::blas_nrm2(hdl, &x12));
     // printf("after prox norm(y12) = %e\n", cml::blas_nrm2(hdl, &y12));
 
@@ -243,20 +246,20 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     cml::blas_axpy(hdl, kOne - kAlpha, &zprev, &ztemp);
     CUDA_CHECK_ERR();
 
-    if (cml::vector_any_isnan(&x))
-      printf("x isnan before project\n");
-    if (cml::vector_any_isnan(&y))
-      printf("y isnan before project\n");
+    // if (cml::vector_any_isnan(&x))
+    //   printf("x isnan before project\n");
+    // if (cml::vector_any_isnan(&y))
+    //   printf("y isnan before project\n");
     // Project onto y = Ax.
     T proj_tol = kProjTolMin / std::pow(static_cast<T>(k + 1), kProjTolPow);
     proj_tol = std::max(proj_tol, kProjTolMax);
-    _P.Project(xtemp.data, ytemp.data, kOne, x.data, y.data, proj_tol);
+    _P.Project(xtemp.data, ytemp.data, kOne, x.data, y.data, proj_tol, mul_count);
     cudaDeviceSynchronize();
     CUDA_CHECK_ERR();
-    if (cml::vector_any_isnan(&x))
-      printf("x isnan after project\n");
-    if (cml::vector_any_isnan(&y))
-      printf("y isnan after project\n");
+    // if (cml::vector_any_isnan(&x))
+    //   printf("x isnan after project\n");
+    // if (cml::vector_any_isnan(&y))
+    //   printf("y isnan after project\n");
 
     // Calculate residuals.
     cml::vector_memcpy(&ztemp, &zprev);
@@ -275,12 +278,14 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     if ((nrm_r < 10 * eps_pri && nrm_s < 10 * eps_dua) || kUseExactTol) {
       cml::vector_memcpy(&ztemp, &z12);
       _A.Mul('n', kOne, x12.data, -kOne, ytemp.data);
+      mul_count++;
       cudaDeviceSynchronize();
       nrm_r = cml::blas_nrm2(hdl, &ytemp);
       cml::vector_memcpy(&ztemp, &z12);
       cml::blas_axpy(hdl, kOne, &zt, &ztemp);
       cml::blas_axpy(hdl, -kOne, &zprev, &ztemp);
       _A.Mul('t', kOne, ytemp.data, kOne, xtemp.data);
+      mul_count++;
       cudaDeviceSynchronize();
       nrm_s = _rho * cml::blas_nrm2(hdl, &xtemp);
       exact = true;
@@ -358,8 +363,10 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     Printf(__HBAR__
         "Status: %s\n"
         "Timing: Total = %3.2e s, Init = %3.2e s\n"
-        "Iter  : %u\n",
-        PogsStatusString(status).c_str(), timer<double>() - t0, time_init, k);
+        "Iter  : %u\n"
+        "A and A.T evals: %i\n",
+        PogsStatusString(status).c_str(), timer<double>() - t0, time_init, k,
+        mul_count);
     Printf(__HBAR__
         "Error Metrics:\n"
         "Pri: "

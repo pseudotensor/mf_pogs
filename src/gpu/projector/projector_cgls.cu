@@ -74,7 +74,7 @@ int ProjectorCgls<T, M>::Init() {
 
 template <typename T, typename M>
 int ProjectorCgls<T, M>::Project(const T *x0, const T *y0, T s, T *x, T *y,
-                                 T tol) {
+                                 T tol, int &mul_count) {
   DEBUG_EXPECT(this->_done_init);
   DEBUG_EXPECT(s >= static_cast<T>(0.));
   if (!this->_done_init || s < static_cast<T>(0.))
@@ -90,7 +90,7 @@ int ProjectorCgls<T, M>::Project(const T *x0, const T *y0, T s, T *x, T *y,
 
   // y := y0 - Ax0;
   _A.Mul('n', static_cast<T>(-1.), x0, static_cast<T>(1.), y);
-
+  mul_count++;
   // Minimize ||Ax - b||_2^2 + s||x||_2^2
   cgls::Solve(hdl, Gemv<T, M>(_A), static_cast<cgls::INT>(_A.Rows()),
       static_cast<cgls::INT>(_A.Cols()), y, x, s, tol, kMaxIter, kCglsQuiet);
@@ -104,6 +104,7 @@ int ProjectorCgls<T, M>::Project(const T *x0, const T *y0, T s, T *x, T *y,
 
   // y := Ax
   _A.Mul('n', static_cast<T>(1.), x, static_cast<T>(0.), y);
+  mul_count++;
   cudaDeviceSynchronize();
 
 #ifdef DEBUG

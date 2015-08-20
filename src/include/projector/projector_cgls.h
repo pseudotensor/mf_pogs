@@ -21,7 +21,7 @@ class ProjectorCgls : Projector<T, M> {
 
   int Init();
 
-  int Project(const T *x0, const T *y0, T s, T *x, T *y, T tol);
+  int Project(const T *x0, const T *y0, T s, T *x, T *y, T tol, int &mul_count);
 };
 
 }  // namespace pogs

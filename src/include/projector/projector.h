@@ -1,5 +1,5 @@
-#ifndef PROJECTOR_PROJECTOR_H_ 
-#define PROJECTOR_PROJECTOR_H_ 
+#ifndef PROJECTOR_PROJECTOR_H_
+#define PROJECTOR_PROJECTOR_H_
 
 namespace pogs {
 
@@ -14,15 +14,16 @@ class Projector {
  public:
   Projector() : _done_init(false), _info(0) { };
   virtual ~Projector() { };
-  
+
   virtual int Init() = 0;
 
-  virtual int Project(const T *x0, const T *y0, T s, T *x, T *y, T tol) = 0;
-  
+  virtual int Project(const T *x0, const T *y0, T s, T *x, T *y, T tol,
+    int &mul_count) = 0;
+
   bool IsInit() { return _done_init; }
 };
 
 }  // namespace pogs
 
-#endif  // PROJECTOR_PROJECTOR_H_ 
+#endif  // PROJECTOR_PROJECTOR_H_
 

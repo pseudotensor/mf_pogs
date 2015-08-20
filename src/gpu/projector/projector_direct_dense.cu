@@ -104,7 +104,7 @@ int ProjectorDirect<T, M>::Init() {
 
 template <typename T, typename M>
 int ProjectorDirect<T, M>::Project(const T *x0, const T *y0, T s, T *x, T *y,
-                                   T tol) {
+                                   T tol, int &mul_count) {
   DEBUG_EXPECT(this->_done_init);
   if (!this->_done_init || s < static_cast<T>(0.))
     return 1;

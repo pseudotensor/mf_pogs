@@ -69,7 +69,6 @@ MatrixFAO<T>::MatrixFAO(T *dag_output, size_t m, T *dag_input, size_t n,
                         void *dag, size_t samples,
                         size_t equil_steps) :  Matrix<T>(m, n),
                         _samples(samples), _equil_steps(equil_steps) {
-
   GpuData<T> *info = new GpuData<T>();
 
   info->_dag_output = cml::vector_view_array<T>(dag_output, m);
@@ -128,10 +127,10 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
   if (trans == 'n' || trans == 'N') {
     x_vec = cml::vector_view_array<T>(x, this->_n);
     y_vec = cml::vector_view_array<T>(y, this->_m);
-    if (cml::vector_any_isnan(&x_vec))
-      printf("x isnan before Amul\n");
-    if (cml::vector_any_isnan(&y_vec))
-      printf("y isnan before Amul\n");
+    // if (cml::vector_any_isnan(&x_vec))
+    //   printf("x isnan before Amul\n");
+    // if (cml::vector_any_isnan(&y_vec))
+    //   printf("y isnan before Amul\n");
     // printf("before Amul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
     // printf("before Amul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
     cml::vector_memcpy<T>(dag_input, &x_vec);
@@ -147,17 +146,17 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     // }
     cml::vector_scale(&y_vec, beta);
     cml::blas_axpy(hdl, 1., dag_output, &y_vec);
-    if (cml::vector_any_isnan(&x_vec))
-      printf("x isnan after Amul\n");
-    if (cml::vector_any_isnan(&y_vec))
-      printf("y isnan after Amul\n");
+    // if (cml::vector_any_isnan(&x_vec))
+    //   printf("x isnan after Amul\n");
+    // if (cml::vector_any_isnan(&y_vec))
+    //   printf("y isnan after Amul\n");
   } else {
     x_vec = cml::vector_view_array<T>(x, this->_m);
     y_vec = cml::vector_view_array<T>(y, this->_n);
-    if (cml::vector_any_isnan(&x_vec))
-      printf("x isnan before ATmul\n");
-    if (cml::vector_any_isnan(&y_vec))
-      printf("y isnan before ATmul\n");
+    // if (cml::vector_any_isnan(&x_vec))
+    //   printf("x isnan before ATmul\n");
+    // if (cml::vector_any_isnan(&y_vec))
+    //   printf("y isnan before ATmul\n");
     // printf("before ATmul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
     // printf("before ATmul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
     cml::vector_memcpy<T>(dag_output, &x_vec);
@@ -173,10 +172,10 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     // }
     cml::vector_scale<T>(&y_vec, beta);
     cml::blas_axpy(hdl, 1., dag_input, &y_vec);
-    if (cml::vector_any_isnan(&x_vec))
-      printf("x isnan after ATmul\n");
-    if (cml::vector_any_isnan(&y_vec))
-      printf("y isnan after ATmul\n");
+    // if (cml::vector_any_isnan(&x_vec))
+    //   printf("x isnan after ATmul\n");
+    // if (cml::vector_any_isnan(&y_vec))
+    //   printf("y isnan after ATmul\n");
   }
   cudaDeviceSynchronize();
   CUDA_CHECK_ERR();

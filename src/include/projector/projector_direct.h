@@ -1,5 +1,5 @@
-#ifndef PROJECTOR_PROJECTOR_DIRECT_H_ 
-#define PROJECTOR_PROJECTOR_DIRECT_H_ 
+#ifndef PROJECTOR_PROJECTOR_DIRECT_H_
+#define PROJECTOR_PROJECTOR_DIRECT_H_
 
 #include "projector/projector.h"
 
@@ -18,13 +18,13 @@ class ProjectorDirect : Projector<T, M> {
  public:
   ProjectorDirect(const M& A);
   ~ProjectorDirect();
-  
+
   int Init();
 
-  int Project(const T *x0, const T *y0, T s, T *x, T *y, T tol);
+  int Project(const T *x0, const T *y0, T s, T *x, T *y, T tol, int &mul_count);
 };
 
 }  // namespace pogs
 
-#endif  // PROJECTOR_PROJECTOR_DIRECT_H_ 
+#endif  // PROJECTOR_PROJECTOR_DIRECT_H_
 
