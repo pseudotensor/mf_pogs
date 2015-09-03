@@ -253,9 +253,11 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     // Project onto y = Ax.
     T proj_tol = kProjTolMin / std::pow(static_cast<T>(k + 1), kProjTolPow);
     proj_tol = std::max(proj_tol, kProjTolMax);
+    double t = timer<double>();
     _P.Project(xtemp.data, ytemp.data, kOne, x.data, y.data, proj_tol, mul_count);
     cudaDeviceSynchronize();
     CUDA_CHECK_ERR();
+    printf("T_Project = %e\n", timer<double>() - t);
     // if (cml::vector_any_isnan(&x))
     //   printf("x isnan after project\n");
     // if (cml::vector_any_isnan(&y))
