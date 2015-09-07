@@ -257,7 +257,9 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     _P.Project(xtemp.data, ytemp.data, kOne, x.data, y.data, proj_tol, mul_count);
     cudaDeviceSynchronize();
     CUDA_CHECK_ERR();
-    printf("T_Project = %e\n", timer<double>() - t);
+    if (_verbose) {
+      printf("T_Project = %e\n", timer<double>() - t);
+    }
     // if (cml::vector_any_isnan(&x))
     //   printf("x isnan after project\n");
     // if (cml::vector_any_isnan(&y))
