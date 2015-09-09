@@ -104,7 +104,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
   const T kProjTolMin     = static_cast<T>(1e-2);
   const T kProjTolPow     = static_cast<T>(2);
   const T kProjTolIni     = static_cast<T>(1e-5);
-  const bool kUseExactTol = false;
+  const bool kUseExactTol = true;
   int mul_count = 0;
 
   // Initialize Projector P and Matrix A.
@@ -257,9 +257,9 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     _P.Project(xtemp.data, ytemp.data, kOne, x.data, y.data, proj_tol, mul_count);
     cudaDeviceSynchronize();
     CUDA_CHECK_ERR();
-    if (_verbose) {
-      printf("T_Project = %e\n", timer<double>() - t);
-    }
+    // if (_verbose) {
+    //   printf("T_Project = %e\n", timer<double>() - t);
+    // }
     // if (cml::vector_any_isnan(&x))
     //   printf("x isnan after project\n");
     // if (cml::vector_any_isnan(&y))
@@ -624,6 +624,7 @@ void MakeRawCone(const std::vector<ConeConstraint> &K,
   for (const auto& cone_constraint : K) {
     ConeConstraintRaw raw;
     raw.size = cone_constraint.idx.size();
+    printf("raw size = %d\n", raw.size);
     cudaMalloc(&(raw.idx), raw.size * sizeof(CONE_IDX));
     cudaMemcpy(raw.idx, cone_constraint.idx.data(), raw.size * sizeof(CONE_IDX),
         cudaMemcpyHostToDevice);

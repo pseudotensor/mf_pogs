@@ -4,6 +4,7 @@
 #include "equil_helper.cuh"
 #include "cml/cml_blas.cuh"
 #include "cml/cml_vector.cuh"
+#include "cml/cml_rand.cuh"
 #include "matrix/matrix.h"
 #include "matrix/matrix_fao.h"
 #include "util.h"
@@ -135,15 +136,15 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     // printf("before Amul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
     cml::vector_memcpy<T>(dag_input, &x_vec);
     // Multiply by E.
-    // if (this->_done_equil) {
-    //   cml::vector_mul<T>(dag_input, &(info->_e));
-    // }
+    if (this->_done_equil) {
+      cml::vector_mul<T>(dag_input, &(info->_e));
+    }
     this->_Amul(this->_dag);
     cml::vector_scale<T>(dag_output, alpha);
     // Multiply by D.
-    // if (this->_done_equil) {
-    //   cml::vector_mul<T>(dag_output, &(info->_d));
-    // }
+    if (this->_done_equil) {
+      cml::vector_mul<T>(dag_output, &(info->_d));
+    }
     cml::vector_scale(&y_vec, beta);
     cml::blas_axpy(hdl, 1., dag_output, &y_vec);
     // if (cml::vector_any_isnan(&x_vec))
@@ -161,15 +162,15 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     // printf("before ATmul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
     cml::vector_memcpy<T>(dag_output, &x_vec);
     // Multiply by D.
-    // if (this->_done_equil) {
-    //   cml::vector_mul<T>(dag_output, &(info->_d));
-    // }
+    if (this->_done_equil) {
+      cml::vector_mul<T>(dag_output, &(info->_d));
+    }
     this->_ATmul(this->_dag);
     cml::vector_scale<T>(dag_input, alpha);
     // Multiply by E.
-    // if (this->_done_equil) {
-    //   cml::vector_mul<T>(dag_input, &(info->_e));
-    // }
+    if (this->_done_equil) {
+      cml::vector_mul<T>(dag_input, &(info->_e));
+    }
     cml::vector_scale<T>(&y_vec, beta);
     cml::blas_axpy(hdl, 1., dag_input, &y_vec);
     // if (cml::vector_any_isnan(&x_vec))
@@ -202,8 +203,12 @@ template <typename T>
 struct BoundF {
   T lb, ub;
   BoundF(T lb, T ub) : lb(lb), ub(ub) { }
-  double operator()(double x) { return fmax(lb, fmin(ub, x)); }
-  float operator()(float x) { return fmaxf(lb, fminf(ub, x)); }
+  __host__ __device__ double operator()(double x) {
+    return fmax(lb, fmin(ub, x));
+  }
+  __host__ __device__ float operator()(float x) {
+    return fmaxf(lb, fminf(ub, x));
+  }
 };
 
 template <typename T>
@@ -220,6 +225,10 @@ int MatrixFAO<T>::Equil(T *d, T *e,
   cublasHandle_t hdl = info->hdl;
   CUDA_CHECK_ERR();
 
+  cml::vector<T> *dag_input =
+    const_cast< cml::vector<T> *>(&info->_dag_input);
+  cml::vector<T> *dag_output =
+    const_cast< cml::vector<T> *>(&info->_dag_output);
   cml::vector<T> d_vec = cml::vector_view_array<T>(d, this->_m);
   cml::vector<T> e_vec = cml::vector_view_array<T>(e, this->_n);
   cml::vector_set_all<T>(&d_vec, 1.0);
@@ -235,51 +244,58 @@ int MatrixFAO<T>::Equil(T *d, T *e,
     // Set D = alpha*(|A|^2diag(E)^2 + alpha^2*gamma*1)^{-1/2}.
     {
        cml::vector_scale<T>(&d_vec, 0);
-       cml::vector<T> *dag_input =
-         const_cast< cml::vector<T> *>(&info->_dag_input);
-       cml::vector<T> *dag_output =
-         const_cast< cml::vector<T> *>(&info->_dag_output);
        for (size_t i = 0; i < this->_samples; ++i) {
          GenRandS(dag_input);
          cml::vector_mul<T>(dag_input, &e_vec);
          this->_Amul(this->_dag);
          cml::vector_mul<T>(dag_output, dag_output);
          cml::blas_axpy(hdl, 1., dag_output, &d_vec);
+         cudaDeviceSynchronize();
+         CUDA_CHECK_ERR();
        }
        printf("before div norm d_vec AE = %e\n", cml::blas_nrm2(hdl, &d_vec));
        cml::vector_scale<T>(&d_vec, 1.0/static_cast<T>(this->_samples));
        printf("norm d_vec AE = %e\n", cml::blas_nrm2(hdl, &d_vec));
     }
+    cudaDeviceSynchronize();
+    CUDA_CHECK_ERR();
     //RandRnsAE(&d_vec, &e_vec);
     // cml::vector_add_constant<T>(&d_vec, alpha*alpha*gamma);
     thrust::transform(thrust::device_pointer_cast(d_vec.data),
            thrust::device_pointer_cast(d_vec.data + this->_m),
            thrust::device_pointer_cast(d_vec.data), SqrtF<T>());
+    cudaDeviceSynchronize();
+    CUDA_CHECK_ERR();
     // Round D's entries to be in [MIN_SCALE, MAX_SCALE].
     thrust::transform(thrust::device_pointer_cast(d_vec.data),
            thrust::device_pointer_cast(d_vec.data + this->_m),
            thrust::device_pointer_cast(d_vec.data),
            BoundF<T>(MIN_SCALE, MAX_SCALE));
-
+    cudaDeviceSynchronize();
+    CUDA_CHECK_ERR();
     thrust::transform(thrust::device_pointer_cast(d_vec.data),
            thrust::device_pointer_cast(d_vec.data + this->_m),
            thrust::device_pointer_cast(d_vec.data), ReciprF<T>());
+    cudaDeviceSynchronize();
+    CUDA_CHECK_ERR();
     // cml::vector_scale<T>(&d_vec, alpha);
     // Set E = beta*(|A^T|^2diag(D)^2 + gamma*beta^2*1)^{-1/2}.
     {
         cml::vector_scale<T>(&e_vec, 0);
-        cml::vector<T> *dag_input =
-          const_cast< cml::vector<T> *>(&info->_dag_input);
-        cml::vector<T> *dag_output=
-          const_cast< cml::vector<T> *>(&info->_dag_output);
         for (size_t i = 0; i < this->_samples; ++i) {
           GenRandS(dag_output);
+          CUDA_CHECK_ERR();
           cml::vector_mul<T>(dag_output, &d_vec);
+          CUDA_CHECK_ERR();
           this->_ATmul(this->_dag);
+          CUDA_CHECK_ERR();
           cml::vector_mul<T>(dag_input, dag_input);
+          CUDA_CHECK_ERR();
           // printf("ATD e_vec[0] = %e\n", e_vec->data[0]);
           cml::blas_axpy(hdl, 1., dag_input, &e_vec);
           //cml::vector_add<T>(e_vec, dag_input);
+          CUDA_CHECK_ERR();
+          cudaDeviceSynchronize();
         }
         printf("before div norm e_vec ATD = %e\n", cml::blas_nrm2(hdl, &e_vec));
         cml::vector_scale<T>(&e_vec, 1.0/static_cast<T>(this->_samples));
