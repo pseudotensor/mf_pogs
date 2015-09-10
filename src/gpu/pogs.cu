@@ -104,7 +104,7 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
   const T kProjTolMin     = static_cast<T>(1e-2);
   const T kProjTolPow     = static_cast<T>(2);
   const T kProjTolIni     = static_cast<T>(1e-5);
-  const bool kUseExactTol = true;
+  const bool kUseExactTol = false;
   int mul_count = 0;
 
   // Initialize Projector P and Matrix A.
@@ -277,6 +277,10 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     cudaDeviceSynchronize();
     nrm_r = _nrmA * cml::blas_nrm2(hdl, &xtemp) + cml::blas_nrm2(hdl, &ytemp);
 
+    // TODO debugging
+    if (_verbose)
+      printf(" estimated _nrmA = %e, nrm_r = %e, nrm_s = %e\n", _nrmA, nrm_r, nrm_s);
+
     // Calculate exact residuals only if necessary.
     bool exact = false;
     if ((nrm_r < 10 * eps_pri && nrm_s < 10 * eps_dua) || kUseExactTol) {
@@ -293,6 +297,9 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
       cudaDeviceSynchronize();
       nrm_s = _rho * cml::blas_nrm2(hdl, &xtemp);
       exact = true;
+      if (_verbose)
+        printf(" true nrm_r = %e, nrm_s = %e\n", _nrmA, nrm_r, nrm_s);
+
     }
     CUDA_CHECK_ERR();
 
