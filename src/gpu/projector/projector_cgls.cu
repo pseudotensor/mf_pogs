@@ -18,7 +18,7 @@ namespace pogs {
 namespace {
 
 int kMaxIter = 100;
-bool kCglsQuiet = false;
+bool kCglsQuiet = true;
 
 template<typename T>
 struct GpuData {
@@ -92,18 +92,10 @@ int ProjectorCgls<T, M>::Project(const T *x0, const T *y0, T s, T *x, T *y,
   _A.Mul('n', static_cast<T>(-1.), x0, static_cast<T>(1.), y);
   mul_count++;
 
-  cml::vector<T> x_vec1 = cml::vector_view_array(x, _A.Cols());
-  cml::vector<T> y_vec = cml::vector_view_array(y, _A.Rows());
-  printf("before CGLS nrm2(x) = %e, nrm2(y) = %e\n",
-    cml::blas_nrm2(hdl, &x_vec1), cml::blas_nrm2(hdl, &y_vec));
-
   // Minimize ||Ax - b||_2^2 + s||x||_2^2
   cgls::Solve(hdl, Gemv<T, M>(_A), static_cast<cgls::INT>(_A.Rows()),
       static_cast<cgls::INT>(_A.Cols()), y, x, s, tol, kMaxIter, kCglsQuiet);
   cudaDeviceSynchronize();
-
-  printf("after CGLS nrm2(x_vec1) = %e, nrm2(y_vec) = %e\n",
-    cml::blas_nrm2(hdl, &x_vec1), cml::blas_nrm2(hdl, &y_vec));
 
   // x := x + x0
   cml::vector<T> x_vec = cml::vector_view_array(x, _A.Cols());
