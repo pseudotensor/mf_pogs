@@ -26,6 +26,7 @@ const unsigned int kMaxIter      = 2500u;
 const unsigned int kInitIter     = 10u;
 const bool         kAdaptiveRho  = true;
 const bool         kGapStop      = false;
+const bool         kUseExactTol  = true;
 
 // Status messages
 enum PogsStatus { POGS_SUCCESS,          // Converged succesfully.
@@ -71,7 +72,7 @@ class PogsImplementation {
   // Parameters.
   T _abs_tol, _rel_tol;
   unsigned int _max_iter, _init_iter, _verbose;
-  bool _adaptive_rho, _gap_stop, _init_x, _init_lambda;
+  bool _adaptive_rho, _gap_stop, _init_x, _init_lambda, _use_exact_tol;
 
   // Solver
   PogsStatus Solve(PogsObjective<T> *obj);
@@ -96,6 +97,7 @@ class PogsImplementation {
   unsigned int GetVerbose()     const { return _verbose; }
   bool         GetAdaptiveRho() const { return _adaptive_rho; }
   bool         GetGapStop()     const { return _gap_stop; }
+  bool         GetUseExactTol() const { return _use_exact_tol; }
 
 
   // Setters for parameters and initial values.
@@ -107,6 +109,7 @@ class PogsImplementation {
   void SetVerbose(unsigned int verbose)    { _verbose = verbose; }
   void SetAdaptiveRho(bool adaptive_rho)   { _adaptive_rho = adaptive_rho; }
   void SetGapStop(bool gap_stop)           { _gap_stop = gap_stop; }
+  void SetUseExactTol(bool use_exact_tol) { _use_exact_tol = use_exact_tol; }
   void SetInitX(const T *x) {
     memcpy(_x, x, _A.Cols() * sizeof(T));
     _init_x = true;

@@ -40,6 +40,7 @@ PogsImplementation<T, M, P>::PogsImplementation(const M &A)
       _verbose(kVerbose),
       _adaptive_rho(kAdaptiveRho),
       _gap_stop(kGapStop),
+      _use_exact_tol(kUseExactTol),
       _init_x(false), _init_lambda(false) {
   _x = new T[_A.Cols()]();
   _y = new T[_A.Rows()]();
@@ -104,7 +105,6 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
   const T kProjTolMin     = static_cast<T>(1e-2);
   const T kProjTolPow     = static_cast<T>(2);
   const T kProjTolIni     = static_cast<T>(1e-5);
-  const bool kUseExactTol = false;
   int mul_count = 0;
 
   // Initialize Projector P and Matrix A.
@@ -223,12 +223,10 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     cml::blas_axpy(hdl, -kOne, &zt, &z);
     objective->prox(x.data, y.data, x12.data, y12.data, _rho);
     CUDA_CHECK_ERR();
-    // if (cml::vector_any_isnan(&x12))
-    //   printf("x12 isnan after prox\n");
-    // if (cml::vector_any_isnan(&y12))
-    //   printf("y12 isnan after prox\n");
-    // printf("after prox norm(x12) = %e\n", cml::blas_nrm2(hdl, &x12));
-    // printf("after prox norm(y12) = %e\n", cml::blas_nrm2(hdl, &y12));
+
+    printf("1. nrm2(x12) = %e, nrm2(y12)=%e, nrm2(z)=%e, nrm(zprev)\n",
+      cml::blas_nrm2(hdl, &x12), cml::blas_nrm2(hdl, &y12),
+      cml::blas_nrm2(hdl, &z), cml::blas_nrm2(hdl, &zprev));
 
     // Compute gap, optval, and tolerances.
     cml::blas_axpy(hdl, -kOne, &z12, &z);
@@ -240,16 +238,20 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     eps_dua = _rho * (sqrtn_atol + _rel_tol * cml::blas_nrm2(hdl, &x));
     CUDA_CHECK_ERR();
 
+    printf("2. nrm2(z12) = %e, nrm2(zt)=%e, nrm2(z)=%e\n",
+      cml::blas_nrm2(hdl, &z12), cml::blas_nrm2(hdl, &zt),
+      cml::blas_nrm2(hdl, &z));
+
     // Apply over relaxation.
     cml::vector_memcpy(&ztemp, &zt);
     cml::blas_axpy(hdl, kAlpha, &z12, &ztemp);
     cml::blas_axpy(hdl, kOne - kAlpha, &zprev, &ztemp);
     CUDA_CHECK_ERR();
 
-    // if (cml::vector_any_isnan(&x))
-    //   printf("x isnan before project\n");
-    // if (cml::vector_any_isnan(&y))
-    //   printf("y isnan before project\n");
+    printf("3. nrm2(ztemp) = %e, nrm2(ytemp) = %e, nrm2(xtemp)=%e, nrm(zprev)=%e\n",
+      cml::blas_nrm2(hdl, &ztemp), cml::blas_nrm2(hdl, &ytemp),
+      cml::blas_nrm2(hdl, &xtemp), cml::blas_nrm2(hdl, &zprev));
+
     // Project onto y = Ax.
     T proj_tol = kProjTolMin / std::pow(static_cast<T>(k + 1), kProjTolPow);
     proj_tol = std::max(proj_tol, kProjTolMax);
@@ -260,30 +262,33 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     // if (_verbose) {
     //   printf("T_Project = %e\n", timer<double>() - t);
     // }
-    // if (cml::vector_any_isnan(&x))
-    //   printf("x isnan after project\n");
-    // if (cml::vector_any_isnan(&y))
-    //   printf("y isnan after project\n");
+    printf("4. nrm2(x) = %e, nrm2(y) = %e\n",
+      cml::blas_nrm2(hdl, &x), cml::blas_nrm2(hdl, &y));
+
 
     // Calculate residuals.
-    cml::vector_memcpy(&ztemp, &zprev);
-    cml::blas_axpy(hdl, -kOne, &z, &ztemp);
-    cudaDeviceSynchronize();
-    nrm_s = _rho * (_nrmA * cml::blas_nrm2(hdl, &ytemp) +
-        cml::blas_nrm2(hdl, &xtemp));
+    // TODO skip when _use_exact_tol.
+    if (true || !_use_exact_tol) {
+      cml::vector_memcpy(&ztemp, &zprev);
+      cml::blas_axpy(hdl, -kOne, &z, &ztemp);
+      cudaDeviceSynchronize();
+      nrm_s = _rho * (_nrmA * cml::blas_nrm2(hdl, &ytemp) +
+          cml::blas_nrm2(hdl, &xtemp));
 
-    cml::vector_memcpy(&ztemp, &z12);
-    cml::blas_axpy(hdl, -kOne, &z, &ztemp);
-    cudaDeviceSynchronize();
-    nrm_r = _nrmA * cml::blas_nrm2(hdl, &xtemp) + cml::blas_nrm2(hdl, &ytemp);
-
-    // TODO debugging
-    if (_verbose)
-      printf(" estimated _nrmA = %e, nrm_r = %e, nrm_s = %e\n", _nrmA, nrm_r, nrm_s);
+      cml::vector_memcpy(&ztemp, &z12);
+      cml::blas_axpy(hdl, -kOne, &z, &ztemp);
+      cudaDeviceSynchronize();
+      nrm_r = _nrmA * cml::blas_nrm2(hdl, &xtemp) + cml::blas_nrm2(hdl, &ytemp);
+      // TODO debugging
+      if (_verbose) {
+        printf(" estimated _nrmA = %e, nrm_r = %e, nrm_s = %e\n", _nrmA, nrm_r, nrm_s);
+        printf("nrm2(ytemp) = %e, nrm2(xtemp)=%e\n", cml::blas_nrm2(hdl, &ytemp), cml::blas_nrm2(hdl, &xtemp));
+      }
+    }
 
     // Calculate exact residuals only if necessary.
     bool exact = false;
-    if ((nrm_r < 10 * eps_pri && nrm_s < 10 * eps_dua) || kUseExactTol) {
+    if (_use_exact_tol || (nrm_r < 10 * eps_pri && nrm_s < 10 * eps_dua)) {
       cml::vector_memcpy(&ztemp, &z12);
       _A.Mul('n', kOne, x12.data, -kOne, ytemp.data);
       mul_count++;
@@ -297,9 +302,6 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
       cudaDeviceSynchronize();
       nrm_s = _rho * cml::blas_nrm2(hdl, &xtemp);
       exact = true;
-      if (_verbose)
-        printf(" true nrm_r = %e, nrm_s = %e\n", _nrmA, nrm_r, nrm_s);
-
     }
     CUDA_CHECK_ERR();
 
