@@ -130,10 +130,8 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     x_vec = cml::vector_view_array<T>(x, this->_n);
     y_vec = cml::vector_view_array<T>(y, this->_m);
 
-#ifdef DEBUG
-    printf("before Amul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
-    printf("before Amul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
-#endif
+    // printf("before Amul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
+    // printf("before Amul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
 
     cml::vector_memcpy<T>(dag_input, &x_vec);
     // Multiply by E.
@@ -152,10 +150,8 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
     x_vec = cml::vector_view_array<T>(x, this->_m);
     y_vec = cml::vector_view_array<T>(y, this->_n);
 
-#ifdef DEBUG
-    printf("before ATmul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
-    printf("before ATmul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
-#endif
+    // printf("before ATmul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
+    // printf("before ATmul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
 
     cml::vector_memcpy<T>(dag_output, &x_vec);
     // Multiply by D.
@@ -174,10 +170,8 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
   cudaDeviceSynchronize();
   CUDA_CHECK_ERR();
 
-#ifdef DEBUG
-  printf("after mul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
-  printf("after mul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
-#endif
+  // printf("after mul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
+  // printf("after mul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
 
   return 0;
 }
