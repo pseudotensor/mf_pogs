@@ -47,6 +47,8 @@ class PogsObjective {
   virtual void scale(const T *d, const T *e) = 0;
   virtual void constrain_d(T *d) const = 0;
   virtual void constrain_e(T *e) const = 0;
+  // TODO hacky.
+  virtual T get_b_scale() const = 0;
 };
 
 // Proximal Operator Graph Solver.

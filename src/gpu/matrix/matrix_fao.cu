@@ -9,7 +9,7 @@
 #include "matrix/matrix_fao.h"
 #include "equil_helper.cuh"
 #include "util.h"
-
+#include "timer.h"
 
 namespace pogs {
 
@@ -172,7 +172,6 @@ int MatrixFAO<T>::Mul(char trans, T alpha, const T *x, T beta, T *y) const {
 
   // printf("after mul norm(x) = %e\n", cml::blas_nrm2(hdl, &x_vec));
   // printf("after mul norm(y) = %e\n", cml::blas_nrm2(hdl, &y_vec));
-
   return 0;
 }
 
@@ -206,6 +205,7 @@ template <typename T>
 int MatrixFAO<T>::Equil(T *d, T *e,
                         const std::function<void(T*)> &constrain_d,
                         const std::function<void(T*)> &constrain_e) {
+  double t = timer<double>();
   DEBUG_ASSERT(this->_done_init);
   CUDA_CHECK_ERR();
   if (!this->_done_init)
@@ -260,15 +260,11 @@ int MatrixFAO<T>::Equil(T *d, T *e,
     thrust::transform(thrust::device_pointer_cast(d_vec.data),
            thrust::device_pointer_cast(d_vec.data + this->_m),
            thrust::device_pointer_cast(d_vec.data), SqrtF<T>());
-    cudaDeviceSynchronize();
-    CUDA_CHECK_ERR();
     // Round D's entries to be in [MIN_SCALE, MAX_SCALE].
     thrust::transform(thrust::device_pointer_cast(d_vec.data),
            thrust::device_pointer_cast(d_vec.data + this->_m),
            thrust::device_pointer_cast(d_vec.data),
            BoundF<T>(MIN_SCALE, MAX_SCALE));
-    cudaDeviceSynchronize();
-    CUDA_CHECK_ERR();
     thrust::transform(thrust::device_pointer_cast(d_vec.data),
            thrust::device_pointer_cast(d_vec.data + this->_m),
            thrust::device_pointer_cast(d_vec.data), ReciprF<T>());
@@ -341,7 +337,8 @@ int MatrixFAO<T>::Equil(T *d, T *e,
 
   cudaDeviceSynchronize();
   CUDA_CHECK_ERR();
-
+  double elapsed = timer<double>() - t;
+  printf("equil time = %e\n", elapsed);
   return 0;
 }
 

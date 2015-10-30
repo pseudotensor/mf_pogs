@@ -253,8 +253,14 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     //   cml::blas_nrm2(hdl, &xtemp), cml::blas_nrm2(hdl, &zprev));
 
     // Project onto y = Ax.
-    T proj_tol = kProjTolMin / std::pow(static_cast<T>(k + 1), kProjTolPow);
-    proj_tol = std::max(proj_tol, kProjTolMax);
+    T proj_tol = 1 / std::pow(static_cast<T>(k + 1), kProjTolPow);
+    // Tolerance is proportional to b.
+    proj_tol *= objective->get_b_scale();
+    proj_tol = std::min(std::max(proj_tol, kProjTolMax), kProjTolMin);
+    // if (_verbose) {
+    //   printf("proj_tol = %e\n", proj_tol);
+    //   printf("objective->get_b_scale() = %e\n", objective->get_b_scale());
+    // }
     double t = timer<double>();
     _P.Project(xtemp.data, ytemp.data, kOne, x.data, y.data, proj_tol, mul_count);
     cudaDeviceSynchronize();
@@ -326,7 +332,9 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     // Rescale rho.
     if (_adaptive_rho) {
       if (nrm_s < xi * eps_dua && nrm_r > xi * eps_pri &&
-          kTau * static_cast<T>(k) > static_cast<T>(kd)) {
+          kTau * static_cast<T>(k) > static_cast<T>(kd) &&
+          // TODO hack.
+          static_cast<T>(k) >= static_cast<T>(ku) + 10) {
         if (_rho < kRhoMax) {
           _rho *= delta;
           cml::blas_scal(hdl, 1 / delta, &zt);
@@ -336,7 +344,9 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
             Printf("+ rho %e\n", _rho);
         }
       } else if (nrm_s > xi * eps_dua && nrm_r < xi * eps_pri &&
-          kTau * static_cast<T>(k) > static_cast<T>(ku)) {
+          kTau * static_cast<T>(k) > static_cast<T>(ku) &&
+          // TODO hack.
+          static_cast<T>(k) >= static_cast<T>(kd) + 10) {
         if (_rho > kRhoMin) {
           _rho /= delta;
           cml::blas_scal(hdl, delta, &zt);
@@ -472,6 +482,7 @@ class PogsObjectiveSeparable : public PogsObjective<T> {
         g.begin(), Multiply<T>());
   }
 
+  T get_b_scale() const { return 1; }
   void constrain_d(T *d) const { }
   void constrain_e(T *e) const { }
 };
@@ -584,6 +595,11 @@ class PogsObjectiveCone : public PogsObjective<T> {
     thrust::transform(c.begin(), c.end(),
         thrust::constant_iterator<T>(c_scale), c.begin(),
         thrust::multiplies<T>());
+  }
+
+  T get_b_scale() const {
+    return std::sqrt(thrust::transform_reduce(b.begin(), b.end(),
+        Square<T>(), static_cast<T>(0), thrust::plus<T>()));
   }
 
   // Average the e_i in Kx

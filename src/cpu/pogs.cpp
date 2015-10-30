@@ -217,8 +217,10 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     gsl::blas_axpy(kOne - kAlpha, &zprev, &ztemp);
 
     // Project onto y = Ax.
-    T proj_tol = kProjTolMin / std::pow(static_cast<T>(k + 1), kProjTolPow);
-    proj_tol = std::max(proj_tol, kProjTolMax);
+    T proj_tol = 1 / std::pow(static_cast<T>(k + 1), kProjTolPow);
+    // Tolerance is proportional to b.
+    proj_tol *= objective->get_b_scale();
+    proj_tol = std::min(std::max(proj_tol, kProjTolMax), kProjTolMin);
     // printf("before project norm2(x) = %e\n", gsl::blas_nrm2(&x));
     // printf("before project norm2(y) = %e\n", gsl::blas_nrm2(&y));
     _P.Project(xtemp.data, ytemp.data, kOne, x.data, y.data, proj_tol);
@@ -403,6 +405,7 @@ class PogsObjectiveSeparable : public PogsObjective<T> {
     std::transform(g.begin(), g.end(), e, g.begin(), multiply);
   }
 
+  T get_b_scale() { return 1; }
   void constrain_d(T *d) const { }
   void constrain_e(T *e) const { }
 };
@@ -469,6 +472,11 @@ class PogsObjectiveCone : public PogsObjective<T> {
     for (T &ci : c) {
       ci *= c_scale;
     }
+  }
+
+  T get_b_scale() const {
+    return std::sqrt(thrust::transform_reduce(b.begin(), b.end(),
+        Square<T>(), static_cast<T>(0), thrust::plus<T>()));
   }
 
   // Average the e_i in Kx
