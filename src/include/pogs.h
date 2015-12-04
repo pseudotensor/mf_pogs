@@ -27,6 +27,7 @@ const unsigned int kInitIter     = 10u;
 const bool         kAdaptiveRho  = true;
 const bool         kGapStop      = false;
 const bool         kUseExactTol  = true;
+const double       kProjTolPow   = 2.0;
 
 // Status messages
 enum PogsStatus { POGS_SUCCESS,          // Converged succesfully.
@@ -72,7 +73,7 @@ class PogsImplementation {
   unsigned int _final_iter;
 
   // Parameters.
-  T _abs_tol, _rel_tol;
+  T _abs_tol, _rel_tol, _proj_tol_pow;
   unsigned int _max_iter, _init_iter, _verbose;
   bool _adaptive_rho, _gap_stop, _init_x, _init_lambda, _use_exact_tol;
 
@@ -100,6 +101,7 @@ class PogsImplementation {
   bool         GetAdaptiveRho() const { return _adaptive_rho; }
   bool         GetGapStop()     const { return _gap_stop; }
   bool         GetUseExactTol() const { return _use_exact_tol; }
+  T            GetProjTolPow()  const { return _proj_tol_pow; }
 
 
   // Setters for parameters and initial values.
@@ -109,6 +111,7 @@ class PogsImplementation {
   void SetMaxIter(unsigned int max_iter)   { _max_iter = max_iter; }
   void SetInitIter(unsigned int init_iter) { _init_iter = init_iter; }
   void SetVerbose(unsigned int verbose)    { _verbose = verbose; }
+  void SetProjTolPow(T proj_tol_pow)       { _proj_tol_pow = proj_tol_pow; }
   void SetAdaptiveRho(bool adaptive_rho)   { _adaptive_rho = adaptive_rho; }
   void SetGapStop(bool gap_stop)           { _gap_stop = gap_stop; }
   void SetUseExactTol(bool use_exact_tol) { _use_exact_tol = use_exact_tol; }

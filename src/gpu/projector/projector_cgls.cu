@@ -94,7 +94,7 @@ int ProjectorCgls<T, M>::Project(const T *x0, const T *y0, T s, T *x, T *y,
 
   // Minimize ||Ax - b||_2^2 + s||x||_2^2
   cgls::Solve(hdl, Gemv<T, M>(_A), static_cast<cgls::INT>(_A.Rows()),
-      static_cast<cgls::INT>(_A.Cols()), y, x, s, tol, kMaxIter, kCglsQuiet);
+      static_cast<cgls::INT>(_A.Cols()), y, x, s, tol, kMaxIter, kCglsQuiet, mul_count);
   cudaDeviceSynchronize();
 
   // x := x + x0

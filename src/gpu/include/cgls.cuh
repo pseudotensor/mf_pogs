@@ -494,7 +494,7 @@ inline double Epsilon<cuFloatComplex>() {
 template <typename T, typename F>
 int Solve(cublasHandle_t handle, const F& A, const INT m, const INT n,
           const T *b, T *x, const double shift, const double tol,
-          const int maxit, bool quiet) {
+          const int maxit, bool quiet, int &mul_count) {
   // Variable declarations.
   T *p, *q, *r, *s;
   double gamma, normp, normq, norms, norms0, normx, xmax;
@@ -528,6 +528,7 @@ int Solve(cublasHandle_t handle, const F& A, const INT m, const INT n,
   CGLS_CUDA_CHECK_ERR();
   if (normx > 0.) {
     err = A('n', kNegOne, x, kOne, r);
+    mul_count++;
     cudaDeviceSynchronize();
     CGLS_CUDA_CHECK_ERR();
     if (err)
@@ -536,6 +537,7 @@ int Solve(cublasHandle_t handle, const F& A, const INT m, const INT n,
 
   // s = A'*r - shift*x.
   err = A('t', kOne, r, kNegShift, s);
+  mul_count++;
   cudaDeviceSynchronize();
   CGLS_CUDA_CHECK_ERR();
   if (err)
@@ -560,6 +562,7 @@ int Solve(cublasHandle_t handle, const F& A, const INT m, const INT n,
   for (k = 0; k < maxit && !flag; ++k) {
     // q = A * p.
     err = A('n', kOne, p, kZero, q);
+    mul_count++;
     cudaDeviceSynchronize();
     CGLS_CUDA_CHECK_ERR();
     if (err) {
@@ -591,6 +594,7 @@ int Solve(cublasHandle_t handle, const F& A, const INT m, const INT n,
     // s = A'*r - shift*x.
     cudaMemcpy(s, x, n * sizeof(T), cudaMemcpyDeviceToDevice);
     err = A('t', kOne, r, kNegShift, s);
+    mul_count++;
     cudaDeviceSynchronize();
     CGLS_CUDA_CHECK_ERR();
     if (err) {

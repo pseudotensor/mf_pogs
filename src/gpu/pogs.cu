@@ -41,6 +41,7 @@ PogsImplementation<T, M, P>::PogsImplementation(const M &A)
       _adaptive_rho(kAdaptiveRho),
       _gap_stop(kGapStop),
       _use_exact_tol(kUseExactTol),
+      _proj_tol_pow(kProjTolPow),
       _init_x(false), _init_lambda(false) {
   _x = new T[_A.Cols()]();
   _y = new T[_A.Rows()]();
@@ -103,10 +104,11 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
   const T kZero           = static_cast<T>(0);
   const T kProjTolMax     = static_cast<T>(1e-6);
   const T kProjTolMin     = static_cast<T>(1e-2);
-  const T kProjTolPow     = static_cast<T>(2);
+  // const T kProjTolPow     = static_cast<T>(2);
   const T kProjTolIni     = static_cast<T>(1e-5);
   int mul_count = 0;
 
+  printf("proj_tol_pow = %e\n", _proj_tol_pow);
   // Initialize Projector P and Matrix A.
   if (!_done_init)
     _Init(objective);
@@ -253,9 +255,8 @@ PogsStatus PogsImplementation<T, M, P>::Solve(PogsObjective<T> *objective) {
     //   cml::blas_nrm2(hdl, &xtemp), cml::blas_nrm2(hdl, &zprev));
 
     // Project onto y = Ax.
-    T proj_tol = 1 / std::pow(static_cast<T>(k + 1), kProjTolPow);
     // Tolerance is proportional to b.
-    proj_tol *= objective->get_b_scale();
+    T proj_tol = objective->get_b_scale() / std::pow(static_cast<T>(k + 1), _proj_tol_pow);
     proj_tol = std::min(std::max(proj_tol, kProjTolMax), kProjTolMin);
     // if (_verbose) {
     //   printf("proj_tol = %e\n", proj_tol);
